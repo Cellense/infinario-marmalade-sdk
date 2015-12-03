@@ -1,6 +1,6 @@
 # Infinario Marmalade SDK
 
-Infinario Marmalade SDK is available in this Git repository: https://github.com/infinario/unity-sdk. It provides tracking capabilities for your application.
+Infinario Marmalade SDK provides tracking capabilities for your application.
 
 # Usage
 
