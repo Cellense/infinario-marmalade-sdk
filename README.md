@@ -2,7 +2,7 @@
 
 Infinario Marmalade SDK provides tracking capabilities for your application.
 
-# Usage
+##Usage
 
 To start tracking, you need to know your projectToken. To initialize the tracking, simply get an instance of the Infinario class:
 
