@@ -1,0 +1,20 @@
+#!/usr/bin/env mkb
+files
+{
+    source/Infinario.cpp
+    source/Infinario.h
+    source/Test.cpp
+	source/Main.cpp
+    source/Main.h    
+}
+
+subprojects
+{
+    iwutil
+    iwhttp
+    iwgx
+}
+
+deployment
+{
+}

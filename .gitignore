@@ -1,0 +1,6 @@
+alt/*
+build_*
+data*
+!data-ram/output.txt
+*.dmp
+ReadMe.InfinarioSDK.txt

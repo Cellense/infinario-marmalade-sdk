@@ -1,0 +1,19 @@
+{
+    "commands": [{
+        "name": "crm/events",
+        "data": {
+            "customer_ids" : {
+                "cookie": "loozers"
+            },
+            "project_id": "c15eb0de-9745-11e5-acc0-b083fedeed2e",
+            "timestamp": 1449008523,
+            "type": "omg",
+            "properties": {
+                "quest": "ballzianus",
+                "loot": "herpaderba",
+                "rly?": 4112,
+                "messi": 211.41
+            }            
+        }
+    }]
+}

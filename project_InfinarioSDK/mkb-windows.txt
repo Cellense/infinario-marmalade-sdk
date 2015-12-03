@@ -1,0 +1,1 @@
+VC14;build_infinariosdk_vc14;

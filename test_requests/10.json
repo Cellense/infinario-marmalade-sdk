@@ -1,0 +1,17 @@
+{
+    "commands": [{
+        "name": "crm/events",
+        "data": {
+            "customer_ids" : {
+                "cookie": "loozers"
+            },
+            "project_id": "c15eb0de-9745-11e5-acc0-b083fedeed2e",
+            "timestamp": 1449008822,
+            "type": "lost",
+            "properties": {
+                "huh": "0.o",
+                "orly?": "yrly"
+            }
+        }
+    }]
+}
