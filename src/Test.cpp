@@ -82,6 +82,8 @@ void incrementCallback(const CIwHTTP &httpClient, const Infinario::ResponseStatu
 
 void ExampleInit()
 {
+	Infinario::Infinario::initialize();
+
 	outputFile = s3eFileOpen(TEST_OUTPUT_FILE, "w");
 	
 	if (outputFile != NULL) {
@@ -91,14 +93,14 @@ void ExampleInit()
 		infinario->update("{ \"name\": \"Rumbal\", \"age\": 12, \"e-peen\": 1.2364 }", incrementCallback);
 		infinario->track("omg", "{ \"quest\": \"dragon\", \"loot\" : \"zidane\", \"rly?\" : 52, \"messi\" : 7.41 }",
 			1449008100.0, incrementCallback);
-
+			
 		// Test tracking using constructor with anonymous customer that is identified before the event.
 		// Also tests customer merging.
 		infinario2 = new Infinario::Infinario(projectToken);
 		infinario2->identify(customerId, incrementCallback);
 		infinario2->track("omg", "{ \"quest\": \"ballz\", \"loot\" : \"uwotmate?\", \"rly?\" : 42, \"messi\" : 2.41 }",
 			1449008256.0, incrementCallback);
-
+		
 		// Test tracking using constructor with anonymous customer that is identified after the event.
 		infinario3 = new Infinario::Infinario(projectToken);
 		infinario3->track("omg", "{ \"quest\": \"ballzianus\", \"loot\" : \"herpaderba\", \"rly?\" : 4112, \"messi\""
@@ -165,13 +167,15 @@ void ExampleInit()
 void ExampleShutDown()
 {
     IwGxTerminate();
-
+	
 	delete infinario;
 	delete infinario2;
 	delete infinario3;
 	delete infinario4;
 
 	s3eFileClose(outputFile);
+	
+	Infinario::Infinario::terminate();
 }
 
 bool ExampleUpdate()
@@ -187,7 +191,7 @@ bool ExampleUpdate()
 		infinario4->track("omg", "{ \"quest\": \"dragon\", \"loot\" : \"zidane\", \"rly?\" : 52, \"messi\" : 7.41 }",
 			1449008100.0, incrementCallback, reinterpret_cast<void *>(s6));
 	}
-
+	
 	return true;
 }
 

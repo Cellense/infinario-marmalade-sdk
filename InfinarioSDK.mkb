@@ -1,11 +1,11 @@
 #!/usr/bin/env mkb
 files
 {
-    source/Infinario.cpp
-    source/Infinario.h
-    source/Test.cpp
-	source/Main.cpp
-    source/Main.h    
+    src/Infinario.cpp
+    src/Infinario.h
+    src/Test.cpp
+	src/Main.cpp
+    src/Main.h    
 }
 
 subprojects

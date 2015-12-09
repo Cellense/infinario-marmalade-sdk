@@ -3,6 +3,8 @@
 
 #include "IwHTTP.h"
 
+#include "s3eThread.h"
+
 #include <string>
 #include <sstream>
 #include <queue>
@@ -20,13 +22,52 @@ namespace Infinario
 	typedef void (* ResponseCallback)(const CIwHTTP &httpClient, const ResponseStatus &responseStatus,
 		const std::string &responseBody, void *userData);
 	
+	class JsonPost
+	{
+	public:
+		JsonPost(const std::string &uri, const std::string &body, ResponseCallback callback, void *userData);
+
+		const std::string _uri;
+		const std::string _body;
+		ResponseCallback _callback;
+		void *_userData;
+	};
+
+	class RequestManager
+	{
+	public:
+		RequestManager();
+		~RequestManager();
+
+		void enqueueJsonPost(const JsonPost &jsonPost);
+	private:
+		static int32 recieveHeader(void* systemData, void* userData);
+		static int32 recieveBody(void* systemData, void* userData);
+		
+		static const uint32 _bufferSize;
+		
+		void executeJsonPost();
+
+		CIwHTTP _httpClient;
+
+		s3eThreadLock *_externalLock;
+		s3eThreadLock *_internalLock;
+
+		bool _isRequestBeingProcessed;
+		std::queue<JsonPost> _jsonPosts;
+
+		char *_buffer;
+		uint32 _accumulatedBodyLength;
+		std::stringstream _accumulatedBodyContent;
+	};
+	
 	class Infinario
 	{
 	public:
-		Infinario(const std::string &projectToken, const std::string &customerId = std::string());
-		~Infinario();
+		static void initialize();
+		static void terminate();
 
-		void anonymize();
+		Infinario(const std::string &projectToken, const std::string &customerId = std::string());
 
 		void identify(const std::string &customerId, ResponseCallback callback = NULL, void *userData = NULL);
 
@@ -36,18 +77,7 @@ namespace Infinario
 			ResponseCallback callback = NULL, void *userData = NULL);
 		void track(const std::string &eventName, const std::string &eventAttributes, const double timestamp,
 			ResponseCallback callback = NULL, void *userData = NULL);
-	private:		
-		class JsonPost
-		{
-		public:
-			JsonPost(const std::string &uri, const std::string &body, ResponseCallback callback, void *userData);
-
-			const std::string _uri;
-			const std::string _body;
-			ResponseCallback _callback;
-			void *_userData;
-		};
-
+	private:
 		class IndentifyUserData
 		{
 		public:
@@ -60,28 +90,15 @@ namespace Infinario
 	
 		static void identifyCallback(const CIwHTTP &httpClient, const ResponseStatus &responseStatus,
 			const std::string &responseBody, void *identifyUserData);
-		static int32 recieveHeader(void* systenData, void* userData);
-		static int32 recieveBody(void* systenData, void* userData);
 		
 		static const std::string _requestUri;
-		static const uint32 _bufferSize;
 
-		void enqueueJsonPost(const JsonPost &jsonPost);
-		void executeJsonPost();
-		
+		static RequestManager *_requestManager;
+
 		const std::string _projectToken;
 
 		std::string _customerCookie;
 		std::string _customerId;
-
-		CIwHTTP _httpClient;
-
-		bool _isRequestBeingProcessed;
-		std::queue<JsonPost> _jsonPosts;
-
-		char *_buffer;
-		uint32 _accumulatedBodyLength;
-		std::stringstream _accumulatedBodyContent;
 	};
 }
 
