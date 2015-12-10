@@ -1,6 +1,7 @@
 #include "Infinario.h"
 
 #include "IwHTTP.h"
+
 #include "IwHashString.h"
 #include "IwRandom.h"
 
@@ -14,8 +15,7 @@
 #include <string>
 #include <sstream>
 
-Infinario::JsonPost::JsonPost(const std::string &uri, const std::string &body,
-	ResponseCallback callback, void *userData)
+Infinario::Request::Request(const std::string &uri, const std::string &body, ResponseCallback callback, void *userData)
 : _uri(uri)
 , _body(body)
 , _callback(callback)
@@ -25,185 +25,238 @@ Infinario::JsonPost::JsonPost(const std::string &uri, const std::string &body,
 const uint32 Infinario::RequestManager::_bufferSize = 1024;
 
 Infinario::RequestManager::RequestManager()
-	: _httpClient()
-	, _externalLock(s3eThreadLockCreate())
-	, _internalLock(s3eThreadLockCreate())
-	, _isRequestBeingProcessed(false)
-	, _jsonPosts()
-	, _buffer(reinterpret_cast<char *>(s3eMalloc(RequestManager::_bufferSize + 1)))
-	, _accumulatedBodyLength(0)
-	, _accumulatedBodyContent()
+: _httpClient(new CIwHTTP())
+, _externalLock(s3eThreadLockCreate())
+, _internalLock(s3eThreadLockCreate())
+, _isRequestBeingProcessed(false)
+, _requestsQueue()
+, _buffer(reinterpret_cast<char *>(s3eMalloc(RequestManager::_bufferSize + 1)))
+, _accumulatedBodyLength(0)
+, _accumulatedBodyContent()
 {}
 
 Infinario::RequestManager::~RequestManager()
 {
+	// By destroying this instance all queued callbacks have been canceled.
+	delete this->_httpClient;
+
+	// Call the first queued request callback.
+	if (!this->_requestsQueue.empty()) {
+		const Request &currentRequest(this->_requestsQueue.front());
+
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(NULL, ResponseStatus::KilledError,
+				this->_accumulatedBodyContent.str(), currentRequest._userData);
+		}
+
+		this->_requestsQueue.pop();
+	}
+	
+	// Call the remaining queued request callbacks.
+	while (!this->_requestsQueue.empty()) {
+		const Request &currentRequest(this->_requestsQueue.front());
+
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(NULL, ResponseStatus::KilledError, std::string(), currentRequest._userData);
+		}
+
+		this->_requestsQueue.pop();
+	}
+
 	s3eFree(reinterpret_cast<void *>(this->_buffer));
 
 	s3eThreadLockDestroy(this->_internalLock);
 	s3eThreadLockDestroy(this->_externalLock);
 }
 
-void Infinario::RequestManager::enqueueJsonPost(const JsonPost &jsonPost)
+bool Infinario::RequestManager::IsRequestBeingProcessed() const
+{
+	return this->_isRequestBeingProcessed;
+}
+
+void Infinario::RequestManager::SetProxy(const std::string &proxy)
+{
+	this->_httpClient->SetProxy(proxy.c_str());
+}
+
+void Infinario::RequestManager::Enqueue(const Request &request)
 {
 	s3eThreadLockAcquire(this->_externalLock);
-	
+
 	s3eThreadLockAcquire(this->_internalLock);
-	this->_jsonPosts.push(jsonPost);
+	this->_requestsQueue.push(request);
 	s3eThreadLockRelease(this->_internalLock);
 
+	// If the manager is in request processing mode the call chain will execute all queued requests.
 	if (!this->_isRequestBeingProcessed) {
-		this->executeJsonPost();
+		// Initialize the execute call chain.
+		this->Execute();
 	}
 
 	s3eThreadLockRelease(this->_externalLock);
 }
 
-int32 Infinario::RequestManager::recieveHeader(void *systenData, void *userData)
+// This is the callback indicating that a Post call has completed. Depending on how the server is communicating the
+// content length, we may actually know the length of the content, or we may know the length of the first part of it,
+// or we may know nothing. ContentExpected always returns the smallest possible size of the content, so allocate that
+// much space for now if it's non-zero. If it is of zero size, the server has given no indication, we use the maximum
+// size.
+int32 Infinario::RequestManager::RecieveHeader(void *systenData, void *userData)
 {
+	// Initializing passed reference.
 	RequestManager &requestManager = *(reinterpret_cast<RequestManager *>(userData));
-	JsonPost &lastJsonPost(requestManager._jsonPosts.front());
 
-	if (requestManager._httpClient.GetStatus() == S3E_RESULT_ERROR) {
-		if (lastJsonPost._callback != NULL) {
-			lastJsonPost._callback(requestManager._httpClient, ResponseStatus::ReceiveHeaderError,
-				requestManager._accumulatedBodyContent.str(), lastJsonPost._userData);
+	s3eThreadLockAcquire(requestManager._internalLock);
+
+	const Request &currentRequest(requestManager._requestsQueue.front());
+
+	// Test for error.
+	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
+		// Call callback function if it was supplied.
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(requestManager._httpClient, ResponseStatus::ReceiveHeaderError,
+				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
-		s3eThreadLockAcquire(requestManager._internalLock);
-		requestManager._jsonPosts.pop();
+		// Remove current request from queue.
+		requestManager._requestsQueue.pop();
 		s3eThreadLockRelease(requestManager._internalLock);
 
-		requestManager.executeJsonPost();
+		// Continue in the request execution chain.
+		requestManager.Execute();
 		return 0;
 	}
-
-	// Depending on how the server is communicating the content
-	// length, we may actually know the length of the content, or
-	// we may know the length of the first part of it, or we may
-	// know nothing. ContentExpected always returns the smallest
-	// possible size of the content, so allocate that much space
-	// for now if it's non-zero. If it is of zero size, the server
-	// has given no indication, so we need to guess. We'll guess at 1k.
-	requestManager._accumulatedBodyLength = requestManager._httpClient.ContentExpected();
+	
+	// Set estimated buffer length.
+	requestManager._accumulatedBodyLength = requestManager._httpClient->ContentExpected();
 	if (requestManager._accumulatedBodyLength == 0) {
 		requestManager._accumulatedBodyLength = RequestManager::_bufferSize;
 	}
 
+	// Set buffer suffix and start reading recieved data to it.
 	requestManager._buffer[requestManager._accumulatedBodyLength] = 0;
-	requestManager._httpClient.ReadDataAsync(requestManager._buffer, requestManager._accumulatedBodyLength,
-		0, RequestManager::recieveBody, userData);
+	requestManager._httpClient->ReadDataAsync(requestManager._buffer, requestManager._accumulatedBodyLength,
+		0, RequestManager::RecieveBody, userData);
 
+	s3eThreadLockRelease(requestManager._internalLock);
 	return 0;
 }
 
-int32 Infinario::RequestManager::recieveBody(void *systenData, void *userData)
+// This is the callback indicating that a ReadDataAsync call has completed. Either we've finished, or more data
+// has been recieved. If the correct ammount of data was supplied initially, then this will only be called once.
+// However, it may well be called several times when using chunked encoding.
+int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 {
+	// Initializing passed reference.
 	RequestManager &requestManager = *(reinterpret_cast<RequestManager *>(userData));
-	JsonPost &lastJsonPost(requestManager._jsonPosts.front());
 
-	// This is the callback indicating that a ReadDataAsync call has
-	// completed.  Either we've finished, or a bigger buffer is
-	// needed.  If the correct ammount of data was supplied initially,
-	// then this will only be called once. However, it may well be
-	// called several times when using chunked encoding.
-
-	// Firstly see if there's an error condition.
-	if (requestManager._httpClient.GetStatus() == S3E_RESULT_ERROR) {
-		if (lastJsonPost._callback != NULL) {
-			lastJsonPost._callback(requestManager._httpClient, ResponseStatus::RecieveBodyError,
-				requestManager._accumulatedBodyContent.str(), lastJsonPost._userData);
+	s3eThreadLockAcquire(requestManager._internalLock);
+	
+	const Request &currentRequest(requestManager._requestsQueue.front());
+	
+	// Test for error.
+	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
+		// Call callback function if it was supplied.
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(requestManager._httpClient, ResponseStatus::RecieveBodyError,
+				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
-		
-		s3eThreadLockAcquire(requestManager._internalLock);
-		requestManager._jsonPosts.pop();
+
+		// Remove current request from queue.
+		requestManager._requestsQueue.pop();
 		s3eThreadLockRelease(requestManager._internalLock);
 
-		requestManager.executeJsonPost();
+		// Continue in the request execution chain.
+		requestManager.Execute();
 		return 0;
 	}
 
+	// Store recieved data buffer content.
 	requestManager._accumulatedBodyContent << std::string(requestManager._buffer);
 
-	if (requestManager._httpClient.ContentFinished()) {
-		if (lastJsonPost._callback != NULL) {
-			lastJsonPost._callback(requestManager._httpClient, ResponseStatus::Success,
-				requestManager._accumulatedBodyContent.str(), lastJsonPost._userData);
+	// Test if more data was recieved.
+	if (requestManager._httpClient->ContentFinished()) {
+		// Call callback function if it was supplied.
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(requestManager._httpClient, ResponseStatus::Success,
+				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
-		
-		s3eThreadLockAcquire(requestManager._internalLock);
-		requestManager._jsonPosts.pop();
+
+		// Remove current request from queue.
+		requestManager._requestsQueue.pop();
 		s3eThreadLockRelease(requestManager._internalLock);
 
-		requestManager.executeJsonPost();
+		// Continue in the request execution chain.
+		requestManager.Execute();
 		return 0;
 	}
 
-	// We have some data but not all of it. We need more space.
-	uint32 oldReadSize = requestManager._accumulatedBodyLength;
-	// If iwhttp has a guess how big the next bit of data is (this
-	// basically means chunked encoding is being used), allocate
-	// that much space. Otherwise guess.
-	if (requestManager._accumulatedBodyLength < requestManager._httpClient.ContentExpected()) {
-		requestManager._accumulatedBodyLength = requestManager._httpClient.ContentExpected();
+	// Determine current recieved data size.
+	uint32 bufferLength = requestManager._accumulatedBodyLength;
+	if (requestManager._accumulatedBodyLength < requestManager._httpClient->ContentExpected()) {
+		requestManager._accumulatedBodyLength = requestManager._httpClient->ContentExpected();
 	} else {
 		requestManager._accumulatedBodyLength += RequestManager::_bufferSize;
 	}
+	bufferLength = requestManager._accumulatedBodyLength - bufferLength;
 
-	requestManager._buffer[requestManager._accumulatedBodyLength] = 0;
-	requestManager._httpClient.ReadDataAsync(requestManager._buffer,
-		requestManager._accumulatedBodyLength - oldReadSize, 0, RequestManager::recieveBody, userData);
+	// Set buffer suffix and start reading newly recieved data to it.	
+	requestManager._buffer[bufferLength] = 0;
+	requestManager._httpClient->ReadDataAsync(requestManager._buffer,
+		bufferLength, 0, RequestManager::RecieveBody, userData);
 
+	s3eThreadLockRelease(requestManager._internalLock);
 	return 0;
 }
 
-void Infinario::RequestManager::executeJsonPost()
+void Infinario::RequestManager::Execute()
 {
 	s3eThreadLockAcquire(this->_internalLock);
-	this->_isRequestBeingProcessed = !this->_jsonPosts.empty();
+
+	// Check if a request is available for execution, if it is set the manager to request processing mode.
+	this->_isRequestBeingProcessed = !this->_requestsQueue.empty();
 	if (!this->_isRequestBeingProcessed) {
+		s3eThreadLockRelease(this->_internalLock);
 		return;
 	}
-	s3eThreadLockRelease(this->_internalLock);
 
+	// Reset recieved data accumulation stream.
 	this->_accumulatedBodyContent.str(std::string());
-	this->_accumulatedBodyContent.clear();
+	this->_accumulatedBodyContent.clear();	
 
-	JsonPost &lastJsonPost(this->_jsonPosts.front());
+	const Request &currentRequest(this->_requestsQueue.front());
 
-	this->_httpClient.SetRequestHeader("Content-Type", "application/json");
-	if (this->_httpClient.Post(lastJsonPost._uri.c_str(), lastJsonPost._body.c_str(),
-		static_cast<int32>(lastJsonPost._body.size()), RequestManager::recieveHeader,
+	// Set request headers.
+	this->_httpClient->SetRequestHeader("Content-Type", "application/json");
+
+	// Send request.
+	if (this->_httpClient->Post(currentRequest._uri.c_str(), currentRequest._body.c_str(),
+		static_cast<int32>(currentRequest._body.size()), RequestManager::RecieveHeader,
 		reinterpret_cast<void *>(this)) == S3E_RESULT_ERROR)
 	{
-		if (lastJsonPost._callback != NULL) {
-			lastJsonPost._callback(this->_httpClient, ResponseStatus::SendRequestError,
-				this->_accumulatedBodyContent.str(), lastJsonPost._userData);
+		// Call callback function if it was supplied.
+		if (currentRequest._callback != NULL) {
+			currentRequest._callback(this->_httpClient, ResponseStatus::SendRequestError,
+				this->_accumulatedBodyContent.str(), currentRequest._userData);
 		}
-		
-		s3eThreadLockAcquire(this->_internalLock);
-		this->_jsonPosts.pop();
+
+		// Remove current request from queue.
+		this->_requestsQueue.pop();
 		s3eThreadLockRelease(this->_internalLock);
 
-		this->executeJsonPost();
+		// Continue in the request execution chain.
+		this->Execute();
+		return;
 	}
+
+	s3eThreadLockRelease(this->_internalLock);
 }
 
 const std::string Infinario::Infinario::_requestUri("http://api.infinario.com/bulk");
 
-Infinario::RequestManager *Infinario::Infinario::_requestManager = NULL;
-
-void Infinario::Infinario::initialize()
-{
-	Infinario::_requestManager = new RequestManager();
-}
-
-void Infinario::Infinario::terminate()
-{
-	delete Infinario::_requestManager;
-}
-
 Infinario::Infinario::Infinario(const std::string &projectToken, const std::string &customerId)
-: _projectToken(projectToken)
+: _requestManager()
+, _projectToken(projectToken)
 , _customerCookie()
 , _customerId(customerId)
 {
@@ -236,7 +289,17 @@ Infinario::Infinario::Infinario(const std::string &projectToken, const std::stri
 	this->_customerCookie = hashstream.str();
 }
 
-void Infinario::Infinario::identify(const std::string &customerId, ResponseCallback callback, void *userData)
+bool Infinario::Infinario::IsRequestBeingProcessed() const
+{
+	return this->_requestManager.IsRequestBeingProcessed();
+}
+
+void Infinario::Infinario::SetProxy(const std::string &proxy)
+{
+	this->_requestManager.SetProxy(proxy);
+}
+
+void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallback callback, void *userData)
 {
 	this->_customerId = customerId;
 
@@ -254,11 +317,11 @@ void Infinario::Infinario::identify(const std::string &customerId, ResponseCallb
 		"}]}";
 
 	IndentifyUserData *identifyUserData = new IndentifyUserData(*this, callback, userData);
-	Infinario::_requestManager->enqueueJsonPost(JsonPost(Infinario::_requestUri, bodyStream.str(),
-		Infinario::identifyCallback, reinterpret_cast<void *>(identifyUserData)));
+	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(),
+		Infinario::IdentifyCallback, reinterpret_cast<void *>(identifyUserData)));
 }
 
-void Infinario::Infinario::update(const std::string &customerAttributes, ResponseCallback callback, void *userData)
+void Infinario::Infinario::Update(const std::string &customerAttributes, ResponseCallback callback, void *userData)
 {
 	std::stringstream bodyStream;
 	bodyStream << 
@@ -278,16 +341,16 @@ void Infinario::Infinario::update(const std::string &customerAttributes, Respons
 			"}"
 		"}]}";
 
-	Infinario::_requestManager->enqueueJsonPost(JsonPost(Infinario::_requestUri, bodyStream.str(), callback, userData));
+	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(), callback, userData));
 }
 
-void Infinario::Infinario::track(const std::string &eventName, const std::string &eventAttributes,
+void Infinario::Infinario::Track(const std::string &eventName, const std::string &eventAttributes,
 	ResponseCallback callback, void *userData)
 {
-	this->track(eventName, eventAttributes, static_cast<double>(s3eTimerGetUTC()) / 1000.0, callback);
+	this->Track(eventName, eventAttributes, static_cast<double>(s3eTimerGetUTC()) / 1000.0, callback, userData);
 }
 
-void Infinario::Infinario::track(const std::string &eventName, const std::string &eventAttributes,
+void Infinario::Infinario::Track(const std::string &eventName, const std::string &eventAttributes,
 	const double timestamp, ResponseCallback callback, void *userData)
 {
 	std::stringstream bodyStream;
@@ -310,7 +373,7 @@ void Infinario::Infinario::track(const std::string &eventName, const std::string
 			"}"
 		"}]}";
 
-	Infinario::_requestManager->enqueueJsonPost(JsonPost(Infinario::_requestUri, bodyStream.str(), callback, userData));
+	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(), callback, userData));
 }
 
 Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario,
@@ -320,7 +383,7 @@ Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario,
 , _userData(userData)
 {}
 
-void Infinario::Infinario::identifyCallback(const CIwHTTP &httpClient, const ResponseStatus &responseStatus,
+void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const ResponseStatus responseStatus,
 	const std::string &responseBody, void *identifyUserData)
 {
 	IndentifyUserData *identifyData = reinterpret_cast<IndentifyUserData *>(identifyUserData);
