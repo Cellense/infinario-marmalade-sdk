@@ -28,6 +28,8 @@ Infinario::RequestManager::RequestManager()
 : _httpClient(new CIwHTTP())
 , _externalLock(s3eThreadLockCreate())
 , _internalLock(s3eThreadLockCreate())
+, _emptyRequestQueueCallback(NULL)
+, _emptyRequestQueueUserData(NULL)
 , _isRequestBeingProcessed(false)
 , _requestsQueue()
 , _buffer(reinterpret_cast<char *>(s3eMalloc(RequestManager::_bufferSize + 1)))
@@ -69,14 +71,21 @@ Infinario::RequestManager::~RequestManager()
 	s3eThreadLockDestroy(this->_externalLock);
 }
 
-bool Infinario::RequestManager::IsRequestBeingProcessed() const
-{
-	return this->_isRequestBeingProcessed;
-}
-
 void Infinario::RequestManager::SetProxy(const std::string &proxy)
 {
 	this->_httpClient->SetProxy(proxy.c_str());
+}
+
+void Infinario::RequestManager::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)
+{
+	this->_emptyRequestQueueCallback = callback;
+	this->_emptyRequestQueueUserData = userData;
+}
+
+void Infinario::RequestManager::ClearEmptyRequestQueueCallback()
+{
+	this->_emptyRequestQueueCallback = NULL;
+	this->_emptyRequestQueueUserData = NULL;
 }
 
 void Infinario::RequestManager::Enqueue(const Request &request)
@@ -217,6 +226,12 @@ void Infinario::RequestManager::Execute()
 	this->_isRequestBeingProcessed = !this->_requestsQueue.empty();
 	if (!this->_isRequestBeingProcessed) {
 		s3eThreadLockRelease(this->_internalLock);
+
+		// Call callback function if it was supplied.
+		if (this->_emptyRequestQueueCallback != NULL) {
+			this->_emptyRequestQueueCallback(this->_emptyRequestQueueUserData);
+		}
+
 		return;
 	}
 
@@ -289,14 +304,19 @@ Infinario::Infinario::Infinario(const std::string &projectToken, const std::stri
 	this->_customerCookie = hashstream.str();
 }
 
-bool Infinario::Infinario::IsRequestBeingProcessed() const
-{
-	return this->_requestManager.IsRequestBeingProcessed();
-}
-
 void Infinario::Infinario::SetProxy(const std::string &proxy)
 {
 	this->_requestManager.SetProxy(proxy);
+}
+
+void Infinario::Infinario::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)
+{
+	this->_requestManager.SetEmptyRequestQueueCallback(callback, userData);
+}
+
+void Infinario::Infinario::ClearEmptyRequestQueueCallback()
+{
+	this->_requestManager.ClearEmptyRequestQueueCallback();
 }
 
 void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallback callback, void *userData)

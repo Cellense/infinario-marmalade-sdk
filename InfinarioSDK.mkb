@@ -4,8 +4,7 @@ files
     src/Infinario.cpp
     src/Infinario.h
     src/Test.cpp
-	src/Main.cpp
-    src/Main.h    
+	src/Main.cpp  
 }
 
 subprojects

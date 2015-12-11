@@ -34,10 +34,19 @@ namespace Infinario
 	 * @param responseBody The body of the response recieved from the Infinario server. If an error occured this may
 	 *   contain either an empty string or an incomplete portion of the body sent by the server.
 	 * @param userData Data passed through the callback method, make sure the data is valid (i.e. not deallocated)
-	 *   before this callback is called.
+	 *   before the callback is called.
 	 */
 	typedef void(*ResponseCallback)(const CIwHTTP *httpClient, const ResponseStatus responseStatus,
 		const std::string &responseBody, void *userData);
+
+	/**
+	 * Defines the prototype for callback functions, which are used to indicate that all the queued requests have been
+	 * finalized.
+	 * 
+	 * @param userData Data passed through the callback method, make sure the data is valid (i.e. not deallocated)
+	 *   before the callback is called.
+	 */
+	typedef void(*EmptyRequestQueueCallback)(void *userData);
 
 	/**
 	 * Internal PoD class used to store information about queued requests.
@@ -62,8 +71,10 @@ namespace Infinario
 		RequestManager();
 		~RequestManager();
 
-		bool IsRequestBeingProcessed() const;
 		void SetProxy(const std::string &proxy);
+
+		void SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData = NULL);
+		void ClearEmptyRequestQueueCallback();
 
 		void Enqueue(const Request &request);
 	private:
@@ -78,6 +89,9 @@ namespace Infinario
 
 		s3eThreadLock *_externalLock;
 		s3eThreadLock *_internalLock;
+
+		EmptyRequestQueueCallback _emptyRequestQueueCallback;
+		void *_emptyRequestQueueUserData;
 
 		bool _isRequestBeingProcessed;
 		std::queue<Request> _requestsQueue;
@@ -111,20 +125,28 @@ namespace Infinario
 		 * @param customerId A unique identifier for the tracked player.
 		 */
 		Infinario(const std::string &projectToken, const std::string &customerId = std::string());
-
-		/**
-		 * Used to determine whether all requests have been finalized.
-		 *
-		 * @return True if and only if a request is currently being processed.
-		 */
-		bool IsRequestBeingProcessed() const;
-
+		
 		/**
 		 * Used to set a proxy through which all requests will be sent to the Infinario server.
 		 *
 		 * @param proxy The proxy address (Example: "127.0.0.1:8888").
 		 */
 		void SetProxy(const std::string &proxy);
+
+		/**
+		 * Sets a callback function to be called whenever all pending requests have been finalized. If there is no
+		 * request being currently processed, then the callback will not be called until at least one request is queued
+		 * and then finalized.
+		 *
+		 * @param callback A function, which is called when all requests in the queue have been finalized.
+		 * @param userData Data, which is sent as an argument to the callback function.
+		 */
+		void SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData = NULL);
+
+		/**
+		 * Clears any callback function so that nothing is called when all pending requests have been finalized.
+		 */
+		void ClearEmptyRequestQueueCallback();
 
 		/**
 		 * Used to set a unique customerId for an anonymous player. The customerId is internally set only after a

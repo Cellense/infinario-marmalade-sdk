@@ -1,395 +1,222 @@
-/*
-* This file is part of the Marmalade SDK Code Samples.
-*
-* (C) 2001-2012 Marmalade. All Rights Reserved.
-*
-* This source code is intended only as a supplement to the Marmalade SDK.
-*
-* THIS CODE AND INFORMATION ARE PROVIDED "AS IS" WITHOUT WARRANTY OF ANY
-* KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
-* IMPLIED WARRANTIES OF MERCHANTABILITY AND/OR FITNESS FOR A
-* PARTICULAR PURPOSE.
-*/
-// Examples main file
-//-----------------------------------------------------------------------------
+#include "Infinario.h"
 
-#include "Main.h"
-
-#include "IwDebug.h"
 #include "IwGx.h"
 #include "IwGL.h"
 #include "IwGxPrint.h"
-#include "IwTexture.h"
-#include "IwMaterial.h"
 
 #include "s3e.h"
+#include "s3eFile.h"
+#include "s3eKeyboard.h"
 
-// Globlal for buttons link list
-ExButtons*      g_ButtonsHead = NULL;
-ExButtons*      g_ButtonsTail = NULL;
-CursorKeyCodes  g_Cursorkey = EXCURSOR_NONE;
-static CIwMaterial* g_CursorMaterial = NULL;
-static bool g_EnableExit = true;
-static bool g_DrawExit = true;
+#include <string>
+#include <sstream>
 
-// Externs for functions which examples must implement
-void ExampleInit();
-void ExampleShutDown();
-void ExampleRender();
-bool ExampleUpdate();
+#define FRAME_RATE 25
 
-// Attempt to lock to 25 frames per second
-#define MS_PER_FRAME (1000 / 25)
+#define TEST_PROJECT_TOKEN "c15eb0de-9745-11e5-acc0-b083fedeed2e"
+#define TEST_CUSTOMER_ID "example@marmalade.com"
+#define TEST_OUTPUT_FILE "output.txt"
 
-// Helper function to display message for Debug-Only Examples
-void DisplayMessage(const char* strmessage)
+const std::string projectToken(TEST_PROJECT_TOKEN);
+const std::string customerId(TEST_CUSTOMER_ID);
+
+Infinario::Infinario *infinario1;
+Infinario::Infinario *infinario2;
+Infinario::Infinario *infinario3;
+Infinario::Infinario *infinario4;
+
+bool isPart2Done = true;
+int testId = 1;
+s3eFile *outputFile;
+
+// Testing callback function which prints the response of the server to a file.
+// More information can be obtained from the httpClient object.
+void incrementCallback(const CIwHTTP *httpClient, const Infinario::ResponseStatus responseStatus,
+	const std::string &responseBody, void *userData)
 {
-	uint16* screen = (uint16*)s3eSurfacePtr();
-	int32 width = s3eSurfaceGetInt(S3E_SURFACE_WIDTH);
-	int32 height = s3eSurfaceGetInt(S3E_SURFACE_HEIGHT);
-	int32 pitch = s3eSurfaceGetInt(S3E_SURFACE_PITCH);
-	for (int y = 0; y < height; y++)
-		for (int x = 0; x < width; x++)
-			screen[y * pitch / 2 + x] = 0;
-	s3eDebugPrint(0, 10, strmessage, 1);
-	s3eSurfaceShow();
-	while (!s3eDeviceCheckQuitRequest() && !s3eKeyboardAnyKey())
+	std::stringstream outputStream;
+	outputStream
+		<< "Response #" << testId << std::endl
+		<< " --- " << std::endl
+		<< "Status: ";
+	switch (responseStatus)
 	{
-		s3eDeviceYield(0);
-		s3eKeyboardUpdate();
-	}
-}
-
-CIwSVec2* AllocClientScreenRectangle()
-{
-	CIwSVec2* pCoords = IW_GX_ALLOC(CIwSVec2, 4);
-	pCoords[0].x = 0; pCoords[0].y = 0;
-	pCoords[1].x = 0; pCoords[1].y = (int16)IwGxGetScreenHeight();
-	pCoords[2].x = (int16)IwGxGetScreenWidth(); pCoords[2].y = 0;
-	pCoords[3].x = (int16)IwGxGetScreenWidth(); pCoords[3].y = (int16)IwGxGetScreenHeight();
-
-	return pCoords;
-}
-
-void RenderSoftkey(const char* text, s3eDeviceSoftKeyPosition pos, void(*handler)())
-{
-	int width = 7;
-	int height = 30;
-	width *= strlen(text) * 2;
-	int x = 0;
-	int y = 0;
-	switch (pos)
-	{
-	case S3E_DEVICE_SOFTKEY_BOTTOM_LEFT:
-		y = IwGxGetScreenHeight() - height;
-		x = 0;
+	case Infinario::ResponseStatus::Success:
+		outputStream << "Success";
 		break;
-	case S3E_DEVICE_SOFTKEY_BOTTOM_RIGHT:
-		y = IwGxGetScreenHeight() - height;
-		x = IwGxGetScreenWidth() - width;
+	case Infinario::ResponseStatus::SendRequestError:
+		outputStream << "SendRequestError";
 		break;
-	case S3E_DEVICE_SOFTKEY_TOP_RIGHT:
-		y = 0;
-		x = IwGxGetScreenWidth() - width;
+	case Infinario::ResponseStatus::ReceiveHeaderError:
+		outputStream << "ReceiveHeaderError";
 		break;
-	case S3E_DEVICE_SOFTKEY_TOP_LEFT:
-		x = 0;
-		y = 0;
+	case Infinario::ResponseStatus::RecieveBodyError:
+		outputStream << "RecieveBodyError";
+		break;
+	case Infinario::ResponseStatus::KilledError:
+		outputStream << "KilledError";
+		break;
+	default:
+		outputStream << "UnknownError";
 		break;
 	}
+	outputStream
+		<< std::endl
+		<< " --- " << std::endl
+		<< "Body:" << std::endl
+		<< responseBody << std::endl;
+	if (userData != NULL) {
+		std::string *stringData = reinterpret_cast<std::string *>(userData);
 
-	CIwMaterial *fadeMat = IW_GX_ALLOC_MATERIAL();
-	fadeMat->SetAlphaMode(CIwMaterial::SUB);
-	IwGxSetMaterial(fadeMat);
+		outputStream
+			<< std::endl
+			<< " --- " << std::endl
+			<< "UserData:" << std::endl
+			<< *stringData << std::endl;
 
-	IwGxPrintString(x + 10, y + 10, text, false);
+		delete stringData;
+	}
+	outputStream
+		<< " ************************ " << std::endl;
 
-	CIwColour* cols = IW_GX_ALLOC(CIwColour, 4);
-	memset(cols, 50, sizeof(CIwColour) * 4);
+	std::string outputString(outputStream.str());
+	s3eFileWrite(reinterpret_cast<const void *>(outputString.c_str()), outputString.size(), 1, outputFile);
 
-	if (s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_DOWN)
-	{
-		int pointerx = s3ePointerGetX();
-		int pointery = s3ePointerGetY();
-		if (pointerx >= x && pointerx <= x + width && pointery >= y && pointery <= y + height)
+	++testId;
+}
+
+void SelfDestructor(void *)
+{
+	delete infinario3;
+	s3eFileWrite(reinterpret_cast<const void *>("deleted 3"), 9, 1, outputFile);
+}
+
+void ExampleInit()
+{
+	outputFile = s3eFileOpen(TEST_OUTPUT_FILE, "w");
+
+	if (outputFile != NULL) {
+		// Test tracking using constructor with explicit customer identifier.
+		infinario1 = new Infinario::Infinario(projectToken, customerId);
+		// Testing setting of customer attributes.
+		infinario1->Update("{ \"name\": \"Rumbal\", \"age\": 12, \"e-peen\": 1.2364 }", incrementCallback);
+		infinario1->Track("omg", "{ \"quest\": \"dragon\", \"loot\" : \"zidane\", \"rly?\" : 52, \"messi\" : 7.41 }",
+			1449008100.0, incrementCallback);
+
+		// Test tracking using constructor with anonymous customer that is identified before the event.
+		// Also tests customer merging.
+		infinario2 = new Infinario::Infinario(projectToken);
+		infinario2->Identify(customerId, incrementCallback);
+		infinario2->Track("omg", "{ \"quest\": \"ballz\", \"loot\" : \"uwotmate?\", \"rly?\" : 42, \"messi\" : 2.41 }",
+			1449008256.0, incrementCallback);
+
+		// Test tracking using constructor with anonymous customer that is identified after the event.
+		infinario3 = new Infinario::Infinario(projectToken);
+		infinario3->SetEmptyRequestQueueCallback(SelfDestructor);
+		infinario3->Track("omg", "{ \"quest\": \"ballzianus\", \"loot\" : \"herpaderba\", \"rly?\" : 4112, \"messi\""
+			" : 211.41 }", 1449008523.0, incrementCallback);
+		infinario3->Identify(customerId, incrementCallback);
+
+		// Testing update of customer attributes.
+		infinario3->Update("{ \"name\": \"NotSoRUmb\", \"noob\" : false, \"e-peen\": 1000.2364 }", incrementCallback);
+
+		// Testing long and short tracking bodies.
+		infinario3->Track("bigone", "{ \"name\": \"Get\", \"name2\" : \"Ready\", \"name3\" : \"To\","
+			" \"oh_oh\" : false, \"blaster\" : \"At vero eos et accusamus et iusto odio dignissimos ducimus qui"
+			" blanditiis praesentium voluptatum deleniti atque corrupti quos dolores et quas molestias excepturi"
+			" sint occaecati cupiditate non provident, similique sunt in culpa qui officia deserunt mollitia animi,"
+			" id est laborum et dolorum fuga.Et harum quidem rerum facilis est et expedita distinctio.Nam libero"
+			" tempore, cum soluta nobis est eligendi optio cumque nihil impedit quo minus id quod maxime placeat"
+			" facere possimus, omnis voluptas assumenda est, omnis dolor repellendus.Temporibus autem quibusdam et"
+			" aut officiis debitis aut rerum necessitatibus saepe eveniet ut et voluptates repudiandae sint et"
+			" molestiae non recusandae.Itaque earum rerum hic tenetur a sapiente delectus, ut aut reiciendis"
+			" voluptatibus maiores alias consequatur aut perferendis doloribus asperiores repellat.On the other hand,"
+			" we denounce with righteous indignation and dislike men who are so beguiled and demoralized by the charms"
+			" of pleasure of the moment, so blinded by desire, that they cannot foresee the pain and trouble that are"
+			" bound to ensue; and equal blame belongs to those who fail in their duty through weakness of will, which"
+			" is the same as saying through shrinking from toil and pain.These cases are perfectly simple and easy to"
+			" distinguish.In a free hour, when our power of choice is untrammelled and when nothing prevents our being"
+			" able to do what we like best, every pleasure is to be welcomed and every pain avoided.But in certain"
+			" circumstances and owing to the claims of duty or the obligations of business it will frequently occur"
+			" that pleasures have to be repudiated and annoyances accepted.The wise man therefore always holds in"
+			" these matters to this principle of selection : he rejects pleasures to secure other greater pleasures,"
+			" or else he endures pains to avoid worse pains.\" }", 1449008622.0, incrementCallback);
+		infinario3->Track("lost", "{ \"huh\": \"0.o\", \"orly\" : \"yrly\" }", 1449008822.0, incrementCallback);
+
+		// Test tracking with no callback.
+		infinario3->Track("cram", "{ \"hur\": \"dur\" }", 1449010822.0);
+
+		// Test tracking with callback data.
+		std::string *gg = new std::string("gg");
+		infinario3->Track("zam", "{ \"mur\": \"xc\" }", 1449010822.0, incrementCallback, reinterpret_cast<void *>(gg));
+
+		// Test tracking without timestamp.
+		infinario3->Track("flam", "{ \"hzm\": \"qw\" }", incrementCallback);
+		infinario3->Track("ham", "{ \"food\": \"mickeyD's\" }");
+
+		// Testing order of command execution Part1.
+		infinario4 = new Infinario::Infinario(projectToken);
+		std::string *s1 = new std::string("1");
+		infinario4->Track("omg", "{ \"quest\": \"ballzianus\", \"loot\" : \"herpaderba\", \"rly?\" : 4112, \"messi\""
+			" : 211.41 }", 1449008523.0, incrementCallback, reinterpret_cast<void *>(s1));
+		std::string *s2 = new std::string("2");
+		infinario4->Identify(customerId, incrementCallback, reinterpret_cast<void *>(s2));
+		std::string *s3 = new std::string("3");
+		infinario4->Track("omg", "{ \"quest\": \"ballz\", \"loot\" : \"uwotmate?\", \"rly?\" : 42, \"messi\" : 2.41 }",
+			1449008256.0, incrementCallback, reinterpret_cast<void *>(s3));
+		std::string *s4 = new std::string("4");
+		infinario4->Update("{ \"name\": \"NotSoRUmb\", \"noob\" : false, \"e-peen\": 1000.2364 }", incrementCallback,
+			reinterpret_cast<void *>(s4));
+
+		isPart2Done = false;
+
+		// Test killed event.
 		{
-			memset(cols, 15, sizeof(CIwColour) * 4);
-			handler();
-		}
-	}
-
-	// Draw button area
-	CIwSVec2 XY(x, y - 2), dXY(width, height);
-	IwGxDrawRectScreenSpace(&XY, &dXY, cols);
-}
-
-void RenderSoftkeys()
-{
-	if (g_EnableExit && g_DrawExit)
-	{
-		int back = s3eDeviceGetInt(S3E_DEVICE_BACK_SOFTKEY_POSITION);
-		RenderSoftkey("Exit", (s3eDeviceSoftKeyPosition)back, s3eDeviceRequestQuit);
-	}
-	//int advance = s3eDeviceGetInt(S3E_DEVICE_ADVANCE_SOFTKEY_POSITION);
-	//RenderSoftkey("ASK", (s3eDeviceSoftKeyPosition)advance);
-}
-
-
-int AddButton(const char* text, int x, int y, int w, int h, s3eKey key, exbutton_handler handler)
-{
-	ExButtons* newbutton = new ExButtons;
-
-	strncpy(newbutton->name, text, 63);
-	newbutton->x = x;
-	newbutton->y = y;
-	newbutton->w = w;
-	newbutton->h = h;
-	newbutton->key = key;
-	newbutton->key_state = 0;
-	newbutton->handler = handler;
-	newbutton->next = NULL;
-
-	ExButtons* pbutton = g_ButtonsHead;
-
-	if (g_ButtonsHead)
-	{
-		while (pbutton->next != NULL)
-		{
-			pbutton = pbutton->next;
-		}
-		pbutton->next = newbutton;
-	}
-	else
-	{
-		g_ButtonsHead = newbutton;
-	}
-
-	return 1;
-}
-
-int32 CheckButton(const char* text)
-{
-	ExButtons* pbutton = g_ButtonsHead;
-
-	if (g_ButtonsHead)
-	{
-		pbutton = g_ButtonsHead;
-		while (pbutton != NULL)
-		{
-			if (strcmp(text, pbutton->name) == 0)
-			{
-				return pbutton->key_state;
-			}
-			pbutton = pbutton->next;
-		}
-	}
-
-	return 0;
-}
-
-void RenderButtons()
-{
-	ExButtons* pbutton = g_ButtonsHead;
-
-	if (g_ButtonsHead)
-	{
-		pbutton = g_ButtonsHead;
-		while (pbutton != NULL)
-		{
-			// Check the key and pointer states.
-			pbutton->key_state = s3eKeyboardGetState(pbutton->key);
-			if (s3eKeyboardGetState(pbutton->key) & S3E_KEY_STATE_DOWN)
-			{
-				if (pbutton->handler)
-					pbutton->handler();
-			}
-
-			if (!(s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_UP))
-			{
-				int pointerx = s3ePointerGetX();
-				int pointery = s3ePointerGetY();
-				if (pointerx >= pbutton->x && pointerx <= pbutton->x + pbutton->w && pointery >= pbutton->y && pointery <= pbutton->y + pbutton->h)
-				{
-					if (s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_DOWN)
-					{
-						pbutton->key_state = S3E_KEY_STATE_DOWN;
-					}
-					if (s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_PRESSED)
-					{
-						pbutton->key_state = S3E_KEY_STATE_PRESSED;
-					}
-
-					if (pbutton->handler)
-						pbutton->handler();
-				}
-
-			}
-
-			// Draw the text
-			IwGxSetScreenSpaceSlot(0);
-
-			if (s3ePointerGetInt(S3E_POINTER_AVAILABLE))
-			{
-				CIwMaterial *fadeMat = IW_GX_ALLOC_MATERIAL();
-				fadeMat->SetAlphaMode(CIwMaterial::SUB);
-				IwGxSetMaterial(fadeMat);
-
-				CIwColour* cols = IW_GX_ALLOC(CIwColour, 4);
-				if (pbutton->key_state == S3E_KEY_STATE_DOWN)
-					memset(cols, 15, sizeof(CIwColour) * 4);
-				else
-					memset(cols, 50, sizeof(CIwColour) * 4);
-
-				// Draw button area
-				CIwSVec2 XY(pbutton->x, pbutton->y - 2), dXY(pbutton->w, pbutton->h);
-				IwGxDrawRectScreenSpace(&XY, &dXY, cols);
-			}
-
-			IwGxPrintString(pbutton->x + 2, pbutton->y + ((pbutton->h - 10) / 2), pbutton->name, false);
-			pbutton = pbutton->next;
-		}
-	}
-}
-
-void DeleteButtons()
-{
-	ExButtons* pbutton = g_ButtonsHead;
-	ExButtons* pbuttonnext = NULL;
-
-	while (pbutton != NULL)
-	{
-		pbuttonnext = pbutton->next;
-		delete pbutton;
-		pbutton = pbuttonnext;
-		pbuttonnext = NULL;
-	}
-	g_ButtonsHead = NULL;
-}
-
-void RemoveButton(const char* text)
-{
-	ExButtons* button = g_ButtonsHead;
-	ExButtons* prevbutton = NULL;
-	while (button != NULL)
-	{
-		if (strcmp(text, button->name) == 0)
-		{
-			// break list
-			if (prevbutton != NULL)
-				prevbutton->next = button->next;
-			else
-				g_ButtonsHead = button->next;
-			delete button;
-			return;
-		}
-		prevbutton = button;
-		button = button->next;
-	}
-}
-
-void RenderCursor()
-{
-	if (!s3ePointerGetInt(S3E_POINTER_AVAILABLE))
-		return;
-
-	if (!g_CursorMaterial)
-	{
-		g_CursorMaterial = new CIwMaterial();
-		g_CursorMaterial->SetColAmbient(0, 0, 255, 255);
-	}
-
-	IwGxSetMaterial(g_CursorMaterial);
-	int pointerx = s3ePointerGetX();
-	int pointery = s3ePointerGetY();
-
-	int cursor_size = 10;
-	CIwSVec2 wh(cursor_size * 2, 1);
-	CIwSVec2 wh2(1, cursor_size * 2);
-	CIwSVec2 pos = CIwSVec2((int16)pointerx - cursor_size, (int16)pointery);
-	CIwSVec2 pos2 = CIwSVec2((int16)pointerx, (int16)pointery - cursor_size);
-	IwGxDrawRectScreenSpace(&pos, &wh);
-	IwGxDrawRectScreenSpace(&pos2, &wh2);
-}
-
-void RenderCursorskeys()
-{
-	int height = 20;
-	int width = 45;
-
-	int lefty = IwGxGetScreenHeight() - (height * 2);
-	int leftx = (IwGxGetScreenWidth() - 220) / 2;
-	int upy = IwGxGetScreenHeight() - (height * 3);
-	int upx = leftx + width + (width / 2);
-	int downy = IwGxGetScreenHeight() - height;
-	int downx = upx;
-	int righty = IwGxGetScreenHeight() - (height * 2);
-	int rightx = downx + width + (width / 2);
-
-	CIwMaterial *fadeMat = IW_GX_ALLOC_MATERIAL();
-	fadeMat->SetAlphaMode(CIwMaterial::SUB);
-	IwGxSetMaterial(fadeMat);
-
-	g_Cursorkey = EXCURSOR_NONE;
-
-	if ((s3eKeyboardGetState(s3eKeyLeft) & S3E_KEY_STATE_DOWN))
-		g_Cursorkey = EXCURSOR_LEFT;
-	if ((s3eKeyboardGetState(s3eKeyRight) & S3E_KEY_STATE_DOWN))
-		g_Cursorkey = EXCURSOR_RIGHT;
-	if ((s3eKeyboardGetState(s3eKeyUp) & S3E_KEY_STATE_DOWN))
-		g_Cursorkey = EXCURSOR_UP;
-	if ((s3eKeyboardGetState(s3eKeyDown) & S3E_KEY_STATE_DOWN))
-		g_Cursorkey = EXCURSOR_DOWN;
-
-	if (s3ePointerGetInt(S3E_POINTER_AVAILABLE))
-	{
-		if (s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_DOWN)
-		{
-			int pointerx = s3ePointerGetX();
-			int pointery = s3ePointerGetY();
-			// Check left
-			if (pointerx >= leftx && pointerx <= leftx + width && pointery >= lefty && pointery <= lefty + height)
-				g_Cursorkey = EXCURSOR_LEFT;
-			// Check right
-			if (pointerx >= rightx && pointerx <= rightx + width && pointery >= righty && pointery <= righty + height)
-				g_Cursorkey = EXCURSOR_RIGHT;
-			// Check up
-			if (pointerx >= upx && pointerx <= upx + width && pointery >= upy && pointery <= upy + height)
-				g_Cursorkey = EXCURSOR_UP;
-			// Check down
-			if (pointerx >= downx && pointerx <= downx + width && pointery >= downy && pointery <= downy + height)
-				g_Cursorkey = EXCURSOR_DOWN;
+			Infinario::Infinario infinario(projectToken, "hello@hi.gg");
+			infinario.Track("gg", "{ }", incrementCallback, reinterpret_cast<void *>(new std::string("Why so fast?")));
 		}
 
-		CIwColour* cols = IW_GX_ALLOC(CIwColour, 4);
-		if ((s3ePointerGetState(S3E_POINTER_BUTTON_SELECT) & S3E_POINTER_STATE_DOWN) && (g_Cursorkey != EXCURSOR_NONE))
-			memset(cols, 10, sizeof(CIwColour) * 4);
-		else
-			memset(cols, 50, sizeof(CIwColour) * 4);
-
-		// draw black rect covering screen
-		CIwSVec2 rectdim(width, height);
-
-		CIwSVec2 uXY(upx, upy - 2);
-		IwGxDrawRectScreenSpace(&uXY, &rectdim, cols);
-		IwGxPrintString(upx + 10, upy + 5, "Up", false);
-
-		CIwSVec2 dXY(downx, downy - 2);
-		IwGxDrawRectScreenSpace(&dXY, &rectdim, cols);
-		IwGxPrintString(downx + 10, downy + 5, "Down", false);
-
-		CIwSVec2 lXY(leftx, lefty - 2);
-		IwGxDrawRectScreenSpace(&lXY, &rectdim, cols);
-		IwGxPrintString(leftx + 10, lefty + 5, "Left", false);
-
-		CIwSVec2 rXY(rightx, righty - 2);
-		IwGxDrawRectScreenSpace(&rXY, &rectdim, cols);
-		IwGxPrintString(rightx + 10, righty + 5, "Right", false);
 	}
+
+	IwGxInit();
 }
 
-CursorKeyCodes CheckCursorState()
+void ExampleShutDown()
 {
-	return g_Cursorkey;
+	IwGxTerminate();
+
+	delete infinario1;
+	delete infinario2;
+	delete infinario4;
+
+	s3eFileClose(outputFile);
+}
+
+bool ExampleUpdate()
+{
+	if ((!isPart2Done) && (testId > 5)) {
+		isPart2Done = true;
+
+		// Testing order of command execution Part2.
+		std::string *s5 = new std::string("5");
+		infinario4->Update("{ \"name\": \"Rumbal\", \"age\": 12, \"e-peen\": 1.2364 }", incrementCallback,
+			reinterpret_cast<void *>(s5));
+		std::string *s6 = new std::string("6");
+		infinario4->Track("omg", "{ \"quest\": \"dragon\", \"loot\" : \"zidane\", \"rly?\" : 52, \"messi\" : 7.41 }",
+			1449008100.0, incrementCallback, reinterpret_cast<void *>(s6));
+	}
+
+	return true;
+}
+
+void ExampleRender()
+{
+	// Clear screen
+	IwGxClear(IW_GX_COLOUR_BUFFER_F | IW_GX_DEPTH_BUFFER_F);
+
+	// Swap buffers
+	IwGxFlush();
+	IwGxSwapBuffers();
 }
 
 //-----------------------------------------------------------------------------
@@ -397,31 +224,11 @@ CursorKeyCodes CheckCursorState()
 //-----------------------------------------------------------------------------
 int main()
 {
-#ifdef EXAMPLE_DEBUG_ONLY
-	// Test for Debug only examples
-#ifndef IW_DEBUG
-	DisplayMessage("This example is designed to run from a Debug build. Please build the example in Debug mode and run it again.");
-	return 0;
-#endif
-#endif
-	// We can not use g_EnableExit because it is disable all ways to exit application in Win32 Simulator:
-	// - Exit button
-	// - Alt + F4
-	// - Cross button.
-	// But we need to have way to close application in simulator but not display exit button.
-	// Because draw exit button lead to incorrect pre-compiled shaders generation for Windows Store 8.0/8.1.
-	g_DrawExit = !(s3eDeviceGetInt(S3E_DEVICE_OS) == S3E_OS_ID_WINDOWS &&
-		(IwGetCompileShadersPlatformType() == IW_CS_OS_ID_WS8 ||
-			IwGetCompileShadersPlatformType() == IW_CS_OS_ID_WS81
-			)
-		);
-	g_EnableExit =
-		!(s3eDeviceGetInt(S3E_DEVICE_OS) == S3E_OS_ID_WS8 ||
-			s3eDeviceGetInt(S3E_DEVICE_OS) == S3E_OS_ID_WS81);
+	const int32 msPerFrame = 1000 / FRAME_RATE;
 
-	//IwGx can be initialised in a number of different configurations to help the linker eliminate unused code.
-	//Normally, using IwGxInit() is sufficient.
-	//To only include some configurations, see the documentation for IwGxInit_Base(), IwGxInit_GLRender() etc.
+	// IwGx can be initialised in a number of different configurations to help the linker eliminate unused code.
+	// Normally, using IwGxInit() is sufficient.
+	// To only include some configurations, see the documentation for IwGxInit_Base(), IwGxInit_GLRender() etc.
 	IwGxInit();
 
 	// Example main loop
@@ -431,44 +238,34 @@ int main()
 	IwGxSetColClear(0xff, 0xff, 0xff, 0xff);
 	IwGxPrintSetColour(128, 128, 128);
 
-	while (1)
-	{
+	for (;;) {
 		s3eDeviceYield(0);
 		s3eKeyboardUpdate();
-		s3ePointerUpdate();
 
 		int64 start = s3eTimerGetMs();
 
-		bool result = ExampleUpdate();
-		if (
-			g_EnableExit &&
-			((result == false) ||
-				(s3eKeyboardGetState(s3eKeyEsc) & S3E_KEY_STATE_DOWN) ||
-				(s3eKeyboardGetState(s3eKeyAbsBSK) & S3E_KEY_STATE_DOWN) ||
-				(s3eDeviceCheckQuitRequest()))
-			)
+		ExampleUpdate();
+		if ((s3eKeyboardGetState(s3eKeyEsc) & S3E_KEY_STATE_DOWN) || s3eDeviceCheckQuitRequest()) {
 			break;
+		}
 
-		// Clear the screen
+		// Clear the screen.
 		IwGxClear(IW_GX_COLOUR_BUFFER_F | IW_GX_DEPTH_BUFFER_F);
-		RenderButtons();
-		RenderCursor();
-		RenderSoftkeys();
 		ExampleRender();
 
-		// Attempt frame rate
-		while ((s3eTimerGetMs() - start) < MS_PER_FRAME)
-		{
-			int32 yield = (int32)(MS_PER_FRAME - (s3eTimerGetMs() - start));
-			if (yield<0)
+		// Attempt to lock frame rate.
+		while ((s3eTimerGetMs() - start) < msPerFrame) {
+			int32 yield = msPerFrame - static_cast<int32>(s3eTimerGetMs() - start);
+			if (yield < 0) {
 				break;
+			}
 			s3eDeviceYield(yield);
 		}
 	}
 
-	delete g_CursorMaterial;
 	ExampleShutDown();
-	DeleteButtons();
+	
 	IwGxTerminate();
+
 	return 0;
 }
