@@ -70,7 +70,7 @@ int main()
 		if (testsComplete) {
 			int32 x = 3 * renderBorder;
 			int32 y = 4 * renderBorder + static_cast<int32>(tests->size()) * (renderBorder + renderHeight);
-			IwGxPrintString(x, y, "`x666666""All tests finished successfully.", false);
+			IwGxPrintString(x, y, "`x666666""All tests were completed.", false);
 			IwGxPrintString(x, y + (renderBorder + renderHeight), "`x666666""Press the Esc key to exit.", false);
 		}
 

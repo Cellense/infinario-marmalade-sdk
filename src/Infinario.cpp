@@ -68,13 +68,23 @@ Infinario::RequestManager::~RequestManager()
 
 	s3eFree(reinterpret_cast<void *>(this->_buffer));
 
-	s3eThreadLockDestroy(this->_internalLock);
 	s3eThreadLockDestroy(this->_externalLock);
+	s3eThreadLockDestroy(this->_internalLock);
+
+	// Call the empty request queue function if it was supplied.
+	if (this->_emptyRequestQueueCallback != NULL) {
+		this->_emptyRequestQueueCallback(this->_emptyRequestQueueUserData);
+	}
 }
 
 void Infinario::RequestManager::SetProxy(const std::string &proxy)
 {
 	this->_httpClient->SetProxy(proxy.c_str());
+}
+
+void Infinario::RequestManager::ClearProxy()
+{
+	this->_httpClient->SetProxy(NULL);
 }
 
 void Infinario::RequestManager::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)
@@ -308,6 +318,11 @@ Infinario::Infinario::Infinario(const std::string &projectToken, const std::stri
 void Infinario::Infinario::SetProxy(const std::string &proxy)
 {
 	this->_requestManager.SetProxy(proxy);
+}
+
+void Infinario::Infinario::ClearProxy()
+{
+	this->_requestManager.ClearProxy();
 }
 
 void Infinario::Infinario::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)

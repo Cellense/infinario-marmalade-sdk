@@ -72,6 +72,7 @@ namespace Infinario
 		~RequestManager();
 
 		void SetProxy(const std::string &proxy);
+		void ClearProxy();
 
 		void SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData = NULL);
 		void ClearEmptyRequestQueueCallback();
@@ -132,6 +133,11 @@ namespace Infinario
 		 * @param proxy The proxy address (Example: "127.0.0.1:8888").
 		 */
 		void SetProxy(const std::string &proxy);
+
+		/**
+		 * Used to send requests directly again, after a proxy has been set.		 
+		 */
+		void ClearProxy();
 
 		/**
 		 * Sets a callback function to be called whenever all pending requests have been finalized. If there is no

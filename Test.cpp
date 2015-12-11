@@ -65,7 +65,7 @@ void Test::OutputLog(const int32 id) const
 
 // Test Parameters.
 
-#define TEST_PROJECT_TOKEN "my_project_id"
+#define TEST_PROJECT_TOKEN "my_project_token"
 #define TEST_CUSTOMER_ID "infinario@example.com"
 
 const std::string projectToken(TEST_PROJECT_TOKEN);
@@ -91,6 +91,7 @@ void TestEmptyRequestQueueCallback(void *userData)
 	*(data->log) << "--isCalled flag set--" << std::endl << "True" << std::endl;
 	
 	if (data->infinario != NULL) {
+		data->infinario->ClearEmptyRequestQueueCallback(); // So we don't call ourselves in the next instruction.
 		delete data->infinario;
 		*(data->log) << "--Infinario instance destroyed--" << std::endl;
 	}
@@ -440,8 +441,6 @@ public:
 	{
 		if (this->_initUpdate) {
 			this->_initUpdate = false;
-
-			this->_infinario->ClearEmptyRequestQueueCallback();
 
 			// Testing order of command execution Part2.
 			this->_responseUserData = this->CreateTestResponseUserData();
