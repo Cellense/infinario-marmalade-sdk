@@ -65,8 +65,8 @@ void Test::OutputLog(const int32 id) const
 
 // Test Parameters.
 
-#define TEST_PROJECT_TOKEN "c15eb0de-9745-11e5-acc0-b083fedeed2e"
-#define TEST_CUSTOMER_ID "example@infinario.com"
+#define TEST_PROJECT_TOKEN "my_project_id"
+#define TEST_CUSTOMER_ID "infinario@example.com"
 
 const std::string projectToken(TEST_PROJECT_TOKEN);
 const std::string customerId(TEST_CUSTOMER_ID);
