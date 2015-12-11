@@ -182,7 +182,8 @@ void SelfDestructorCallback(void *userData)
 
 Infinario::Infinario *infinario = new Infinario::Infinario();
 // We send the Infinario class instance itself to the callback.
-infinario->SetEmptyRequestQueueCallback("respawn", "{}", SelfDestructorCallback, reinterpret_cast<void *>(infinario));
+infinario->SetEmptyRequestQueueCallback("respawn", "{}",
+  SelfDestructorCallback, reinterpret_cast<void *>(infinario));
 ```
 
 As you can see the `EmptyRequestQueueCallback` function has only one argument and that's the data we gave it when we assigned the callback by calling the `SetEmptyRequestQueueCallback()` method.
