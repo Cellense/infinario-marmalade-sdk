@@ -36,8 +36,8 @@ namespace Infinario
 	 * @param userData Data passed through the callback method, make sure the data is valid (i.e. not deallocated)
 	 *   before the callback is called.
 	 */
-	typedef void(*ResponseCallback)(const CIwHTTP *httpClient, const ResponseStatus responseStatus,
-		const std::string &responseBody, void *userData);
+	typedef void(*ResponseCallback)(const CIwHTTP *httpClient, const std::string &requestBody,
+		const ResponseStatus responseStatus, const std::string &responseBody, void *userData);
 
 	/**
 	 * Defines the prototype for callback functions, which are used to indicate that all the queued requests have been
@@ -226,8 +226,8 @@ namespace Infinario
 			void *_userData;
 		};
 	
-		static void IdentifyCallback(const CIwHTTP *httpClient, const ResponseStatus responseStatus,
-			const std::string &responseBody, void *identifyUserData);
+		static void IdentifyCallback(const CIwHTTP *httpClient, const std::string &requestBody,
+			const ResponseStatus responseStatus, const std::string &responseBody, void *identifyUserData);
 		
 		static const std::string _requestUri;
 

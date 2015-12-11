@@ -47,7 +47,7 @@ Infinario::RequestManager::~RequestManager()
 		const Request &currentRequest(this->_requestsQueue.front());
 
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(NULL, ResponseStatus::KilledError,
+			currentRequest._callback(NULL, currentRequest._body, ResponseStatus::KilledError,
 				this->_accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
@@ -59,7 +59,8 @@ Infinario::RequestManager::~RequestManager()
 		const Request &currentRequest(this->_requestsQueue.front());
 
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(NULL, ResponseStatus::KilledError, std::string(), currentRequest._userData);
+			currentRequest._callback(NULL, currentRequest._body, ResponseStatus::KilledError,
+				std::string(), currentRequest._userData);
 		}
 
 		this->_requestsQueue.pop();
@@ -123,7 +124,7 @@ int32 Infinario::RequestManager::RecieveHeader(void *systenData, void *userData)
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(requestManager._httpClient, ResponseStatus::ReceiveHeaderError,
+			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::ReceiveHeaderError,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
@@ -167,7 +168,7 @@ int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(requestManager._httpClient, ResponseStatus::RecieveBodyError,
+			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::RecieveBodyError,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
@@ -187,7 +188,7 @@ int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 	if (requestManager._httpClient->ContentFinished()) {
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(requestManager._httpClient, ResponseStatus::Success,
+			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::Success,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
@@ -251,8 +252,8 @@ void Infinario::RequestManager::Execute()
 	{
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
-			currentRequest._callback(this->_httpClient, ResponseStatus::SendRequestError,
-				this->_accumulatedBodyContent.str(), currentRequest._userData);
+			currentRequest._callback(this->_httpClient, currentRequest._body,
+				ResponseStatus::SendRequestError, this->_accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
 		// Remove current request from queue.
@@ -403,8 +404,8 @@ Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario,
 , _userData(userData)
 {}
 
-void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const ResponseStatus responseStatus,
-	const std::string &responseBody, void *identifyUserData)
+void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const std::string &requestBody,
+	const ResponseStatus responseStatus, const std::string &responseBody, void *identifyUserData)
 {
 	IndentifyUserData *identifyData = reinterpret_cast<IndentifyUserData *>(identifyUserData);
 
@@ -414,7 +415,7 @@ void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const Res
 		identifyData->_infinario._customerId.clear();
 	}
 	if (identifyData->_callback != NULL) {
-		identifyData->_callback(httpClient, responseStatus, responseBody, identifyData->_userData);
+		identifyData->_callback(httpClient, requestBody, responseStatus, responseBody, identifyData->_userData);
 	}	
 
 	delete identifyData;

@@ -1,6 +1,6 @@
 *
-!src/*
-!tests/*
+!*.h
+!*.cpp
+!*.mkb
 !.gitignore
-!InfinarioSDK.mkb
 !README.md
