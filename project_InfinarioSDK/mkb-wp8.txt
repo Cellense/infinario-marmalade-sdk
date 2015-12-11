@@ -1,1 +1,0 @@
-VC14_WP8TOOLSET;build_infinariosdk_vc14_wp8toolset;

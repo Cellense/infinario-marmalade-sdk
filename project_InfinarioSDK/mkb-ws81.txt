@@ -1,1 +1,0 @@
-VC14_WS81TOOLSET;build_infinariosdk_vc14_ws81toolset;
