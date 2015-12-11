@@ -42,8 +42,10 @@ Infinario::RequestManager::~RequestManager()
 	// By destroying this instance all queued callbacks have been canceled.
 	delete this->_httpClient;
 
+	bool wasQueueEmptyAtStart = this->_requestsQueue.empty();
+
 	// Call the first queued request callback.
-	if (!this->_requestsQueue.empty()) {
+	if (!wasQueueEmptyAtStart) {
 		const Request &currentRequest(this->_requestsQueue.front());
 
 		if (currentRequest._callback != NULL) {
@@ -72,7 +74,7 @@ Infinario::RequestManager::~RequestManager()
 	s3eThreadLockDestroy(this->_internalLock);
 
 	// Call the empty request queue function if it was supplied.
-	if (this->_emptyRequestQueueCallback != NULL) {
+	if (!wasQueueEmptyAtStart && (this->_emptyRequestQueueCallback != NULL)) {
 		this->_emptyRequestQueueCallback(this->_emptyRequestQueueUserData);
 	}
 }

@@ -65,7 +65,8 @@ void Test::OutputLog(const int32 id) const
 
 // Test Parameters.
 
-#define TEST_PROJECT_TOKEN "my_project_token"
+//"my_project_token"
+#define TEST_PROJECT_TOKEN "c15eb0de-9745-11e5-acc0-b083fedeed2e"
 #define TEST_CUSTOMER_ID "infinario@example.com"
 
 const std::string projectToken(TEST_PROJECT_TOKEN);
@@ -73,7 +74,7 @@ const std::string customerId(TEST_CUSTOMER_ID);
 
 // Callback functions.
 
-typedef struct
+typedef struct TestEmptyRequestQueueUserData
 {
 	std::vector<bool>::iterator isCalled;
 	Infinario::Infinario *infinario;
@@ -106,7 +107,7 @@ void TestEmptyRequestQueueCallback(void *userData)
 	delete data;
 }
 
-typedef struct
+typedef struct TestResponseUserData
 {
 	std::vector<bool>::iterator isCalled;
 	std::vector<bool>::iterator isSuccessfull;
@@ -304,6 +305,23 @@ public:
 		*(reinterpret_cast<bool *>(userData)) = true;
 	}
 
+	typedef struct CustomEmptyRequestQueueUserData
+	{
+		CustomEmptyRequestQueueUserData **emptyRequestQueueUserData;
+		TestEmptyRequestQueueUserData *userData;
+	} CustomEmptyRequestQueueUserData;
+
+	static void CustomEmptyRequestQueueCallback(void *userData)
+	{
+		CustomEmptyRequestQueueUserData *data = reinterpret_cast<CustomEmptyRequestQueueUserData *>(userData);
+		
+		TestEmptyRequestQueueCallback(data->userData);
+
+		(*data->emptyRequestQueueUserData) = NULL;
+
+		delete data;
+	}
+
 	virtual void Init()
 	{
 		this->_enablePrint = false;
@@ -312,9 +330,12 @@ public:
 		this->_infinario = new Infinario::Infinario(projectToken);
 
 		// Set a self destruction callback when all requests are finished.
-		TestEmptyRequestQueueUserData *emptyRequestQueueUserData = this->CreateTestEmptyRequestQueueUserData();
-		emptyRequestQueueUserData->infinario = this->_infinario;
-		this->_infinario->SetEmptyRequestQueueCallback(TestEmptyRequestQueueCallback, emptyRequestQueueUserData);
+		this->_emptyRequestQueueUserData = new CustomEmptyRequestQueueUserData();
+		this->_emptyRequestQueueUserData->emptyRequestQueueUserData = &(this->_emptyRequestQueueUserData);
+		this->_emptyRequestQueueUserData->userData = this->CreateTestEmptyRequestQueueUserData();
+		this->_emptyRequestQueueUserData->userData->infinario = this->_infinario;
+		this->_infinario->SetEmptyRequestQueueCallback(
+			CustomEmptyRequestQueueCallback, reinterpret_cast<void *>(this->_emptyRequestQueueUserData));
 
 		this->_infinario->Track("omg", "{ \"quest\": \"ballzianus\", \"loot\" : \"herrba\", \"rly?\" : 4112, \"mesi\""
 			" : 211.41 }", 1449008523.0,
@@ -373,17 +394,30 @@ public:
 	}
 
 	virtual void Terminate()
-	{}
+	{
+		if (this->_emptyRequestQueueUserData != NULL) {
+			this->_infinario->ClearEmptyRequestQueueCallback();
+
+			delete this->_emptyRequestQueueUserData->userData;
+
+			delete this->_emptyRequestQueueUserData;
+			this->_emptyRequestQueueUserData = NULL;
+
+			delete this->_infinario;
+		}
+	}
 private:
 	Infinario::Infinario *_infinario;
 
 	bool _enablePrint;
+
+	CustomEmptyRequestQueueUserData *_emptyRequestQueueUserData;
 };
 
 class Test4 : public CallbackTest
 {
 public:
-	typedef struct
+	typedef struct CustomEmptyRequestQueueUserData
 	{
 		bool *initUpdate;
 		TestEmptyRequestQueueUserData *userData;
@@ -441,6 +475,8 @@ public:
 	{
 		if (this->_initUpdate) {
 			this->_initUpdate = false;
+
+			this->_infinario->ClearEmptyRequestQueueCallback();
 
 			// Testing order of command execution Part2.
 			this->_responseUserData = this->CreateTestResponseUserData();
