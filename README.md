@@ -41,9 +41,9 @@ The first argument of the `track()` method is the tracked event's name, the seco
 
 ##How it works
 
-After the `track` method is called, the Infinario class internally schedules a request to be sent asynchronously to the Infinario server. This means that code execution continues immediately and does not wait for the response to return, but rather processes it in the background once it arrives. This is how the Infinario class handles all methods that need to communicate with the Infinario server (there are two more such methods, namely the `identify()` and `update()` methods, which will be described later).
+After the `track()` method is called, the Infinario class internally schedules a request to be sent asynchronously to the Infinario server. This means that code execution continues immediately and does not wait for the response to return, but rather processes it in the background once it arrives. This is how the Infinario class handles all methods that need to communicate with the Infinario server (there are two more such methods, namely the `identify()` and `update()` methods, which will be described later).
 
-Each instance of the Infinario class maintains an internal queue of pending requests. Whenever one of the methods `track()`, `identify()` or `update()` is called, the request is added to the end of the queue. The Infinario SDK requests, one at a time, so a new request is sent only when the last one was finalized (meaning we either got a response or the request failed for some reason) or when there are no requests waiting to be sent.
+Each instance of the Infinario class maintains an internal queue of pending requests. Whenever one of the methods `track()`, `identify()` or `update()` is called, the request is added to the end of the queue. The Infinario SDK processes requests, one at a time, so a new request is sent only when the last one has been finalized (meaning we either got a response or the request failed for some reason) or when there are no requests waiting to be sent.
 
 By default, responses from the server are handled internally within the Infinario class. We will later discuss a way to handle responses using user-defined callback functions.
 
