@@ -157,7 +157,7 @@ You can see that within the `ResponseCallback` functions we are given 5 argument
 * `responseBody` - the full HTTP response body received from the Infinario server. This can be used to check if the server correctly processed the sent request.
 * `userData` - a pointer to the custom data supplied to the method where response callback was assigned (in our case the method `update()`).
 
-###Empty Request Queue
+###Empty Request Queue Callbacks
 
 In the previous callback, the last value of the `responseStatus` parameter highlights a useful feature of the Infinario SDK. In some cases, the Infinario class instance may be destroyed before all requests in the queue are processed. If this happens the callback functions for all the remaining requests are called within the Infinario class's destructor.
 
