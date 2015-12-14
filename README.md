@@ -157,6 +157,8 @@ You can see that within the `ResponseCallback` functions we are given 5 argument
 * `responseBody` - the full HTTP response body received from the Infinario server. This can be used to check if the server correctly processed the sent request.
 * `userData` - a pointer to the custom data supplied to the method where response callback was assigned (in our case the method `update()`).
 
+Warning, although it is safe to call any method of the Infinario class instance which called the current callback, it is not safe to delete this instance.
+
 ###Empty Request Queue Callbacks
 
 In the previous callback, the last value of the `responseStatus` parameter highlights a useful feature of the Infinario SDK. In some cases, the Infinario class instance may be destroyed before all requests in the queue are processed. If this happens the callback functions for all the remaining requests are called within the Infinario class's destructor.
@@ -217,6 +219,13 @@ For the most accurate information (exact method prototypes and some helpful info
 
 You can run as many instances of the Infinario class as you wish, though for most cases one instance will be sufficient.
 
-The current implementation is thread safe and so an instance of the Infinario class may be shared by multiple threads.
+In the current implementation the following methods of the infinario class are thread safe and thus can be called on an instance of the Infinario class that is shared by multiple threads:
+* Infinario::Track()
+* Infinario::Identify()
+* Infinario::Update()
+* Infinario::SetProxy()
+* Infinario::ClearProxy()
+* Infinario::SetEmptyRequestQueue()
+* Infinario::ClearEmptyRequestQueue()
 
 Tested on Marmalade v8.0.0.
