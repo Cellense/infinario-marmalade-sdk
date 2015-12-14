@@ -4,6 +4,8 @@ The SDK enables you to easily use Infinario's powerful tracking capabilities in 
 
 Make sure to checkout the `InfinarioSDK.mkb` Marmalade project file. When loaded by Marmalade Hub it can be easily used to test the SDK's functionality. Also you should take a short look at the file `Test.cpp` as it contains some useful examples of how to use the SDK. More information on how to run the test project can be found at the bottom of this readme.
 
+Infinario uses JSON to transfer data. Two functions of the Infinario SDK (namely `Infinario::Track()` and `Infinario::Update()`, which will be described later), allow the user to send custom data to the Infinario server and expect a string containing a valid JSON serialization as one of their arguments. Since C++ does not natively support JSON serialization, we strongly recommend including a 3rd party JSON library. If you don't have your own favourite JSON library already, then you'll love https://github.com/nlohmann/json, just include the headers and you're ready to go.
+
 ##Quick Start
 
 To start tracking all you need to do is to add the contents of the `src` folder into your project, and include the header file `Infinario.h` anywhere you wish to track player events.
