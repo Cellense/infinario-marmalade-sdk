@@ -317,7 +317,7 @@ public:
 		TestEmptyRequestQueueCallback(data->userData);
 
 		(*data->emptyRequestQueueUserData) = NULL;
-
+		
 		delete data;
 	}
 
@@ -325,7 +325,7 @@ public:
 	{
 		this->_enablePrint = false;
 
-		// Test tracking using constructor with anonymous customer that is identified after the event.
+		// Test tracking using constructor with anonymous customer that is identified after the events.
 		this->_infinario = new Infinario::Infinario(projectToken);
 
 		// Set a self destruction callback when all requests are finished.
@@ -338,8 +338,6 @@ public:
 
 		this->_infinario->Track("omg", "{ \"quest\": \"ballzianus\", \"loot\" : \"herrba\", \"rly?\" : 4112, \"mesi\""
 			" : 211.41 }", 1449008523.0,
-			TestResponseCallback, reinterpret_cast<void *>(this->CreateTestResponseUserData()));
-		this->_infinario->Identify(customerId,
 			TestResponseCallback, reinterpret_cast<void *>(this->CreateTestResponseUserData()));
 
 		// Testing update of customer attributes.
@@ -383,6 +381,9 @@ public:
 		// Test tracking without timestamp.
 		this->_infinario->Track("flam", "{ \"hzm\": \"qw\" }", Test3::CustomResponseCallback, &(this->_enablePrint));
 		this->_infinario->Track("ham", "{ \"food\": \"mickeyD's\" }");
+
+		this->_infinario->Identify(customerId,
+			TestResponseCallback, reinterpret_cast<void *>(this->CreateTestResponseUserData()));
 	}
 
 	virtual void Update()
