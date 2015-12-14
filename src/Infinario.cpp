@@ -39,15 +39,20 @@ Infinario::RequestManager::RequestManager()
 
 Infinario::RequestManager::~RequestManager()
 {
+	s3eThreadLockAcquire(this->_externalLock);
+
 	s3eThreadLockAcquire(this->_internalLock);
 
 	// By destroying this instance all queued callbacks have been canceled.
 	delete this->_httpClient;
 	this->_httpClient = NULL;
 
-	s3eThreadLockRelease(this->_internalLock);
-
+	// Prepare data for empty request queue callback.
 	bool wasQueueEmptyAtStart = this->_requestsQueue.empty();
+	EmptyRequestQueueCallback emptyRequestQueueCallback = this->_emptyRequestQueueCallback;
+	void *emptyRequestQueueUserData = this->_emptyRequestQueueUserData;
+
+	s3eThreadLockRelease(this->_internalLock);	
 
 	// Call the first queued request callback.
 	if (!wasQueueEmptyAtStart) {
@@ -75,12 +80,14 @@ Infinario::RequestManager::~RequestManager()
 
 	s3eFree(reinterpret_cast<void *>(this->_buffer));
 
+	s3eThreadLockRelease(this->_externalLock);
+
 	s3eThreadLockDestroy(this->_internalLock);
 	s3eThreadLockDestroy(this->_externalLock);
 
 	// Call the empty request queue function if it was supplied.
-	if (!wasQueueEmptyAtStart && (this->_emptyRequestQueueCallback != NULL)) {
-		this->_emptyRequestQueueCallback(this->_emptyRequestQueueUserData);
+	if (!wasQueueEmptyAtStart && (emptyRequestQueueCallback != NULL)) {
+		emptyRequestQueueCallback(emptyRequestQueueUserData);
 	}
 }
 
@@ -88,7 +95,11 @@ void Infinario::RequestManager::SetProxy(const std::string &proxy)
 {
 	s3eThreadLockAcquire(this->_externalLock);
 
+	s3eThreadLockAcquire(this->_internalLock);
+
 	this->_httpClient->SetProxy(proxy.c_str());
+
+	s3eThreadLockRelease(this->_internalLock);
 
 	s3eThreadLockRelease(this->_externalLock);
 }
@@ -97,7 +108,11 @@ void Infinario::RequestManager::ClearProxy()
 {
 	s3eThreadLockAcquire(this->_externalLock);
 
+	s3eThreadLockAcquire(this->_internalLock);
+
 	this->_httpClient->SetProxy(NULL);
+
+	s3eThreadLockRelease(this->_internalLock);
 
 	s3eThreadLockRelease(this->_externalLock);
 }
@@ -105,19 +120,27 @@ void Infinario::RequestManager::ClearProxy()
 void Infinario::RequestManager::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)
 {
 	s3eThreadLockAcquire(this->_externalLock);
+	
+	s3eThreadLockAcquire(this->_internalLock);
 
 	this->_emptyRequestQueueCallback = callback;
 	this->_emptyRequestQueueUserData = userData;
 
+	s3eThreadLockRelease(this->_internalLock);
+	
 	s3eThreadLockRelease(this->_externalLock);
 }
 
 void Infinario::RequestManager::ClearEmptyRequestQueueCallback()
 {
 	s3eThreadLockAcquire(this->_externalLock);
+	
+	s3eThreadLockAcquire(this->_internalLock);
 
 	this->_emptyRequestQueueCallback = NULL;
 	this->_emptyRequestQueueUserData = NULL;
+
+	s3eThreadLockRelease(this->_internalLock);
 
 	s3eThreadLockRelease(this->_externalLock);
 }
@@ -159,7 +182,7 @@ int32 Infinario::RequestManager::RecieveHeader(void *systenData, void *userData)
 
 	s3eThreadLockAcquire(requestManager._internalLock);
 
-	const Request &currentRequest(requestManager._requestsQueue.front());
+	const Request currentRequest(requestManager._requestsQueue.front());
 
 	// Test for error.
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
@@ -176,8 +199,7 @@ int32 Infinario::RequestManager::RecieveHeader(void *systenData, void *userData)
 		// Remove current request from queue.
 		requestManager._requestsQueue.pop();
 
-		s3eThreadLockRelease(requestManager._internalLock);
-		
+		s3eThreadLockRelease(requestManager._internalLock);		
 
 		// Continue in the request execution chain.
 		requestManager.Execute();
@@ -209,7 +231,7 @@ int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 
 	s3eThreadLockAcquire(requestManager._internalLock);
 
-	const Request &currentRequest(requestManager._requestsQueue.front());
+	const Request currentRequest(requestManager._requestsQueue.front());
 
 	// Test for error.
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
@@ -283,11 +305,14 @@ void Infinario::RequestManager::Execute()
 	// Check if a request is available for execution, if it is set the manager to request processing mode.
 	this->_isRequestBeingProcessed = !this->_requestsQueue.empty();
 	if (!this->_isRequestBeingProcessed) {
+		EmptyRequestQueueCallback emptyRequestQueueCallback = this->_emptyRequestQueueCallback;
+		void *emptyRequestQueueUserData = this->_emptyRequestQueueUserData;
+
 		s3eThreadLockRelease(this->_internalLock);
 
 		// Call callback function if it was supplied.
-		if (this->_emptyRequestQueueCallback != NULL) {
-			this->_emptyRequestQueueCallback(this->_emptyRequestQueueUserData);
+		if (emptyRequestQueueCallback != NULL) {
+			emptyRequestQueueCallback(emptyRequestQueueUserData);
 		}
 
 		return;
