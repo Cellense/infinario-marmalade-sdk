@@ -39,8 +39,13 @@ Infinario::RequestManager::RequestManager()
 
 Infinario::RequestManager::~RequestManager()
 {
+	s3eThreadLockAcquire(this->_internalLock);
+
 	// By destroying this instance all queued callbacks have been canceled.
 	delete this->_httpClient;
+	this->_httpClient = NULL;
+
+	s3eThreadLockRelease(this->_internalLock);
 
 	bool wasQueueEmptyAtStart = this->_requestsQueue.empty();
 
@@ -55,7 +60,7 @@ Infinario::RequestManager::~RequestManager()
 
 		this->_requestsQueue.pop();
 	}
-	
+
 	// Call the remaining queued request callbacks.
 	while (!this->_requestsQueue.empty()) {
 		const Request &currentRequest(this->_requestsQueue.front());
@@ -70,8 +75,8 @@ Infinario::RequestManager::~RequestManager()
 
 	s3eFree(reinterpret_cast<void *>(this->_buffer));
 
-	s3eThreadLockDestroy(this->_externalLock);
 	s3eThreadLockDestroy(this->_internalLock);
+	s3eThreadLockDestroy(this->_externalLock);
 
 	// Call the empty request queue function if it was supplied.
 	if (!wasQueueEmptyAtStart && (this->_emptyRequestQueueCallback != NULL)) {
@@ -81,32 +86,56 @@ Infinario::RequestManager::~RequestManager()
 
 void Infinario::RequestManager::SetProxy(const std::string &proxy)
 {
+	s3eThreadLockAcquire(this->_externalLock);
+
 	this->_httpClient->SetProxy(proxy.c_str());
+
+	s3eThreadLockRelease(this->_externalLock);
 }
 
 void Infinario::RequestManager::ClearProxy()
 {
+	s3eThreadLockAcquire(this->_externalLock);
+
 	this->_httpClient->SetProxy(NULL);
+
+	s3eThreadLockRelease(this->_externalLock);
 }
 
 void Infinario::RequestManager::SetEmptyRequestQueueCallback(EmptyRequestQueueCallback callback, void *userData)
 {
+	s3eThreadLockAcquire(this->_externalLock);
+
 	this->_emptyRequestQueueCallback = callback;
 	this->_emptyRequestQueueUserData = userData;
+
+	s3eThreadLockRelease(this->_externalLock);
 }
 
 void Infinario::RequestManager::ClearEmptyRequestQueueCallback()
 {
+	s3eThreadLockAcquire(this->_externalLock);
+
 	this->_emptyRequestQueueCallback = NULL;
 	this->_emptyRequestQueueUserData = NULL;
+
+	s3eThreadLockRelease(this->_externalLock);
 }
 
 void Infinario::RequestManager::Enqueue(const Request &request)
 {
 	s3eThreadLockAcquire(this->_externalLock);
-
+	
 	s3eThreadLockAcquire(this->_internalLock);
+
+	if (this->_httpClient == NULL) {
+		s3eThreadLockRelease(this->_internalLock);
+		s3eThreadLockRelease(this->_externalLock);
+		return;
+	}
+
 	this->_requestsQueue.push(request);
+
 	s3eThreadLockRelease(this->_internalLock);
 
 	// If the manager is in request processing mode the call chain will execute all queued requests.
@@ -134,21 +163,27 @@ int32 Infinario::RequestManager::RecieveHeader(void *systenData, void *userData)
 
 	// Test for error.
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
+		s3eThreadLockRelease(requestManager._internalLock);
+
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
 			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::ReceiveHeaderError,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
+		s3eThreadLockAcquire(requestManager._internalLock);
+		
 		// Remove current request from queue.
 		requestManager._requestsQueue.pop();
+
 		s3eThreadLockRelease(requestManager._internalLock);
+		
 
 		// Continue in the request execution chain.
 		requestManager.Execute();
 		return 0;
 	}
-	
+
 	// Set estimated buffer length.
 	requestManager._accumulatedBodyLength = requestManager._httpClient->ContentExpected();
 	if (requestManager._accumulatedBodyLength == 0) {
@@ -173,19 +208,24 @@ int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 	RequestManager &requestManager = *(reinterpret_cast<RequestManager *>(userData));
 
 	s3eThreadLockAcquire(requestManager._internalLock);
-	
+
 	const Request &currentRequest(requestManager._requestsQueue.front());
-	
+
 	// Test for error.
 	if (requestManager._httpClient->GetStatus() == S3E_RESULT_ERROR) {
+		s3eThreadLockRelease(requestManager._internalLock);
+
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
 			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::RecieveBodyError,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
 
+		s3eThreadLockAcquire(requestManager._internalLock);
+
 		// Remove current request from queue.
 		requestManager._requestsQueue.pop();
+
 		s3eThreadLockRelease(requestManager._internalLock);
 
 		// Continue in the request execution chain.
@@ -198,14 +238,19 @@ int32 Infinario::RequestManager::RecieveBody(void *systenData, void *userData)
 
 	// Test if more data was recieved.
 	if (requestManager._httpClient->ContentFinished()) {
+		s3eThreadLockRelease(requestManager._internalLock);
+
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
 			currentRequest._callback(requestManager._httpClient, currentRequest._body, ResponseStatus::Success,
 				requestManager._accumulatedBodyContent.str(), currentRequest._userData);
 		}
+		
+		s3eThreadLockAcquire(requestManager._internalLock);
 
 		// Remove current request from queue.
 		requestManager._requestsQueue.pop();
+
 		s3eThreadLockRelease(requestManager._internalLock);
 
 		// Continue in the request execution chain.
@@ -250,7 +295,7 @@ void Infinario::RequestManager::Execute()
 
 	// Reset recieved data accumulation stream.
 	this->_accumulatedBodyContent.str(std::string());
-	this->_accumulatedBodyContent.clear();	
+	this->_accumulatedBodyContent.clear();
 
 	const Request &currentRequest(this->_requestsQueue.front());
 
@@ -262,14 +307,19 @@ void Infinario::RequestManager::Execute()
 		static_cast<int32>(currentRequest._body.size()), RequestManager::RecieveHeader,
 		reinterpret_cast<void *>(this)) == S3E_RESULT_ERROR)
 	{
+		s3eThreadLockRelease(this->_internalLock);
+		
 		// Call callback function if it was supplied.
 		if (currentRequest._callback != NULL) {
 			currentRequest._callback(this->_httpClient, currentRequest._body,
 				ResponseStatus::SendRequestError, this->_accumulatedBodyContent.str(), currentRequest._userData);
 		}
+		
+		s3eThreadLockAcquire(this->_internalLock);
 
 		// Remove current request from queue.
 		this->_requestsQueue.pop();
+		
 		s3eThreadLockRelease(this->_internalLock);
 
 		// Continue in the request execution chain.
@@ -342,15 +392,15 @@ void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallb
 	this->_customerId = customerId;
 
 	std::stringstream bodyStream;
-	bodyStream << 
+	bodyStream <<
 		"{ \"commands\": [{ "
 			"\"name\": \"crm/customers\", "
 			"\"data\": { "
 				"\"ids\": {"
-					" \"registered\": \"" << this->_customerId << "\","
-					" \"cookie\": \"" << this->_customerCookie << "\" "
-				"}, "
-				"\"project_id\": \"" << this->_projectToken << "\" "
+				" \"registered\": \"" << this->_customerId << "\","
+				" \"cookie\": \"" << this->_customerCookie << "\" "
+			"}, "
+			"\"project_id\": \"" << this->_projectToken << "\" "
 			"}"
 		"}]}";
 
@@ -362,20 +412,20 @@ void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallb
 void Infinario::Infinario::Update(const std::string &customerAttributes, ResponseCallback callback, void *userData)
 {
 	std::stringstream bodyStream;
-	bodyStream << 
+	bodyStream <<
 		"{ \"commands\": [{ "
 			"\"name\": \"crm/customers\", "
 			"\"data\": { "
-				"\"ids\": { ";
+			"\"ids\": { ";
 	if (this->_customerId.empty()) {
 		bodyStream << "\"cookie\": \"" << this->_customerCookie << "\" ";
 	} else {
 		bodyStream << "\"registered\": \"" << this->_customerId << "\" ";
 	}
 	bodyStream <<
-				"}, "
-				"\"project_id\": \"" << this->_projectToken << "\", "
-				"\"properties\": " << customerAttributes <<
+			"}, "
+			"\"project_id\": \"" << this->_projectToken << "\", "
+			"\"properties\": " << customerAttributes <<
 			"}"
 		"}]}";
 
@@ -396,26 +446,26 @@ void Infinario::Infinario::Track(const std::string &eventName, const std::string
 		"{ \"commands\": [{ "
 			"\"name\": \"crm/events\", "
 			"\"data\": { "
-				"\"customer_ids\": { ";
+			"\"customer_ids\": { ";
 	if (this->_customerId.empty()) {
 		bodyStream << "\"cookie\": \"" << this->_customerCookie << "\" ";
 	} else {
 		bodyStream << "\"registered\": \"" << this->_customerId << "\" ";
 	}
 	bodyStream <<
-				" }, "
-				"\"project_id\": \"" << this->_projectToken << "\", "
-				"\"timestamp\": " << std::setprecision(3) << std::fixed << timestamp << ", "
-				"\"type\": \"" << eventName << "\", "
-				"\"properties\": " << eventAttributes <<
-			"}"
+			" }, "
+			"\"project_id\": \"" << this->_projectToken << "\", "
+			"\"timestamp\": " << std::setprecision(3) << std::fixed << timestamp << ", "
+			"\"type\": \"" << eventName << "\", "
+			"\"properties\": " << eventAttributes <<
+		"}"
 		"}]}";
 
 	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(), callback, userData));
 }
 
 Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario,
-	ResponseCallback callback, void *userData)
+ResponseCallback callback, void *userData)
 : _infinario(infinario)
 , _callback(callback)
 , _userData(userData)
@@ -433,7 +483,7 @@ void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const std
 	}
 	if (identifyData->_callback != NULL) {
 		identifyData->_callback(httpClient, requestBody, responseStatus, responseBody, identifyData->_userData);
-	}	
+	}
 
 	delete identifyData;
 }
