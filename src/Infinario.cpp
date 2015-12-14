@@ -15,6 +15,18 @@
 #include <string>
 #include <sstream>
 
+std::string Infinario::EscapeJson(const std::string &jsonString) {
+	std::stringstream sstream;
+	for (const char *it = jsonString.begin(), *end = jsonString.end(); it != end; ++it) {
+		if ((*it == '"') || (*it == '\\') || (('\x00' <= *it) && (*it <= '\x1f'))) {
+			sstream << "\\u" << std::hex << std::setw(4) << std::setfill('0') << static_cast<int>(*it);
+		} else {
+			sstream << *it;
+		}
+	}
+	return sstream.str();
+}
+
 Infinario::Request::Request(const std::string &uri, const std::string &body, ResponseCallback callback, void *userData)
 : _uri(uri)
 , _body(body)
@@ -359,9 +371,9 @@ const std::string Infinario::Infinario::_requestUri("http://api.infinario.com/bu
 
 Infinario::Infinario::Infinario(const std::string &projectToken, const std::string &customerId)
 : _requestManager()
-, _projectToken(projectToken)
+, _projectToken(EscapeJson(projectToken))
 , _customerCookie()
-, _customerId(customerId)
+, _customerId(EscapeJson(customerId))
 {
 	IwRandSeed((int32)s3eTimerGetMs());
 
@@ -389,7 +401,7 @@ Infinario::Infinario::Infinario(const std::string &projectToken, const std::stri
 
 	std::stringstream hashstream;
 	hashstream << (IwHashString(sstream.str().c_str()) * IwRandMinMax(1, 1000));
-	this->_customerCookie = hashstream.str();
+	this->_customerCookie = EscapeJson(hashstream.str());
 }
 
 void Infinario::Infinario::SetProxy(const std::string &proxy)
@@ -414,7 +426,7 @@ void Infinario::Infinario::ClearEmptyRequestQueueCallback()
 
 void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallback callback, void *userData)
 {
-	this->_customerId = customerId;
+	std::string escapedCustomerId(EscapeJson(customerId));
 
 	std::stringstream bodyStream;
 	bodyStream <<
@@ -422,14 +434,14 @@ void Infinario::Infinario::Identify(const std::string &customerId, ResponseCallb
 			"\"name\": \"crm/customers\", "
 			"\"data\": { "
 				"\"ids\": {"
-				" \"registered\": \"" << this->_customerId << "\","
+				" \"registered\": \"" << escapedCustomerId << "\","
 				" \"cookie\": \"" << this->_customerCookie << "\" "
 			"}, "
 			"\"project_id\": \"" << this->_projectToken << "\" "
 			"}"
 		"}]}";
 
-	IndentifyUserData *identifyUserData = new IndentifyUserData(*this, callback, userData);
+	IndentifyUserData *identifyUserData = new IndentifyUserData(*this, escapedCustomerId, callback, userData);
 	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(),
 		Infinario::IdentifyCallback, reinterpret_cast<void *>(identifyUserData)));
 }
@@ -481,7 +493,7 @@ void Infinario::Infinario::Track(const std::string &eventName, const std::string
 			" }, "
 			"\"project_id\": \"" << this->_projectToken << "\", "
 			"\"timestamp\": " << std::setprecision(3) << std::fixed << timestamp << ", "
-			"\"type\": \"" << eventName << "\", "
+			"\"type\": \"" << EscapeJson(eventName) << "\", "
 			"\"properties\": " << eventAttributes <<
 		"}"
 		"}]}";
@@ -489,9 +501,10 @@ void Infinario::Infinario::Track(const std::string &eventName, const std::string
 	this->_requestManager.Enqueue(Request(Infinario::_requestUri, bodyStream.str(), callback, userData));
 }
 
-Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario,
-ResponseCallback callback, void *userData)
+Infinario::Infinario::IndentifyUserData::IndentifyUserData(Infinario &infinario, const std::string &escapedCustomerId,
+	ResponseCallback callback, void *userData)
 : _infinario(infinario)
+, _escapedCustomerId(escapedCustomerId)
 , _callback(callback)
 , _userData(userData)
 {}
@@ -501,10 +514,8 @@ void Infinario::Infinario::IdentifyCallback(const CIwHTTP *httpClient, const std
 {
 	IndentifyUserData *identifyData = reinterpret_cast<IndentifyUserData *>(identifyUserData);
 
-	if ((responseStatus != ResponseStatus::Success) ||
-		(responseBody.find("\"status\": \"ok\"") == std::string::npos))
-	{
-		identifyData->_infinario._customerId.clear();
+	if ((responseStatus == ResponseStatus::Success) || (responseBody.find("\"status\": \"ok\"") != std::string::npos)) {
+		identifyData->_infinario._customerId = identifyData->_escapedCustomerId;
 	}
 	if (identifyData->_callback != NULL) {
 		identifyData->_callback(httpClient, requestBody, responseStatus, responseBody, identifyData->_userData);

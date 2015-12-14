@@ -251,7 +251,7 @@ public:
 			TestResponseCallback, reinterpret_cast<void *>(this->CreateTestResponseUserData()));
 		
 		// Testing basic event tracking.
-		this->_infinario->Track("omg", "{ \"quest\": \"drag\", \"loot\" : \"zidan\", "
+		this->_infinario->Track("event\"name", "{ \"quest\": \"drag\", \"loot\" : \"zidan\", "
 			"\"rly?\" : 52, \"mesi\" : 7.41 }", 1449008100.0,
 			TestResponseCallback, reinterpret_cast<void *>(this->CreateTestResponseUserData()));
 	}

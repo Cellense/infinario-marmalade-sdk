@@ -11,6 +11,11 @@
 
 namespace Infinario
 {
+	/**
+	 * Function used to escape special characters in a json string.
+	 */
+	std::string EscapeJson(const std::string &jsonString);
+
 	enum class ResponseStatus : char
 	{
 		Success = 0, // The request was sent and a response was successfully recieved.
@@ -225,9 +230,11 @@ namespace Infinario
 		class IndentifyUserData
 		{
 		public:
-			IndentifyUserData(Infinario &infinario, ResponseCallback callback, void *userData);
+			IndentifyUserData(Infinario &infinario, const std::string &escapedCustomerId,
+				ResponseCallback callback, void *userData);
 
 			Infinario &_infinario;
+			std::string _escapedCustomerId;
 			ResponseCallback _callback;
 			void *_userData;
 		};
