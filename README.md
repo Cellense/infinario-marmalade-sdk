@@ -27,23 +27,23 @@ Infinario::Infinario infinario(projectToken, customerId);
 .
 
 // Track the event "player_jumped" with no additional properties.
-infinario.track("player_jumped", "{}");
+infinario.Track("player_jumped", "{}");
 
 .
 .
 .
 
 // Track the event "player_died" with the properties argument specifying the place.
-infinario.track("player_died", "{ \"location\": \"Green Hill\" }");
+infinario.Track("player_died", "{ \"location\": \"Green Hill\" }");
 ```
 
-The first argument of the `track()` method is the tracked event's name, the second are the tracked event's attributes. The attributes may contain anything, but must be a valid JSON string.
+The first argument of the `Track()` method is the tracked event's name, the second are the tracked event's attributes. The attributes may contain anything, but must be a valid JSON string.
 
 ##How it works
 
-After the `track()` method is called, the Infinario class internally schedules a request to be sent asynchronously to the Infinario server. This means that code execution continues immediately and does not wait for the response to return, but rather processes it in the background once it arrives. This is how the Infinario class handles all methods that need to communicate with the Infinario server (there are two more such methods, namely the `identify()` and `update()` methods, which will be described later).
+After the `Track()` method is called, the Infinario class internally schedules a request to be sent asynchronously to the Infinario server. This means that code execution continues immediately and does not wait for the response to return, but rather processes it in the background once it arrives. This is how the Infinario class handles all methods that need to communicate with the Infinario server (there are two more such methods, namely the `Identify()` and `Update()` methods, which will be described later).
 
-Each instance of the Infinario class maintains an internal queue of pending requests. Whenever one of the methods `track()`, `identify()` or `update()` is called, the request is added to the end of the queue. The Infinario SDK processes requests, one at a time, so a new request is sent only when the last one has been finalized (meaning we either got a response or the request failed for some reason) or when there are no requests waiting to be sent.
+Each instance of the Infinario class maintains an internal queue of pending requests. Whenever one of the methods `Track()`, `Identify()` or `Update()` is called, the request is added to the end of the queue. The Infinario SDK processes requests, one at a time, so a new request is sent only when the last one has been finalized (meaning we either got a response or the request failed for some reason) or when there are no requests waiting to be sent.
 
 By default, responses from the server are handled internally within the Infinario class. We will later discuss a way to handle responses using user-defined callback functions.
 
@@ -68,36 +68,36 @@ Infinario::Infinario infinario(projectToken);
 .
 
 // An event tracked for the anonymous player.
-infinario.track("quest_started", "{ \"level\": \"11\", \"experience_points\": 1500 }");
+infinario.Track("quest_started", "{ \"level\": \"11\", \"experience_points\": 1500 }");
 ```
 
-If at any time we wish to add a unique `customerId` to our anonymous player or merge all the data we have tracked so far with an existing player, we can use the `identify()` method:
+If at any time we wish to add a unique `customerId` to our anonymous player or merge all the data we have tracked so far with an existing player, we can use the `Identify()` method:
 
 ```
 // Now all the data tracked so far will be assigned to the player with the unique id 'infinario@example.com'
-infinario.identify("infinario@example.com");
+infinario.Identify("infinario@example.com");
 ```
 
-The only way we could know that the identify method succeeded is when we receive a confirmation from the Infinario server. That is why the `customerId` we gave to the `identify()` method will only be assigned to events that are tracked after we received the Infinario server's response. Don't worry, all requests sent between calling the `identify()` method and us receiving the Infinario server's confirmation are handled correctly.
+The only way we could know that the identify method succeeded is when we receive a confirmation from the Infinario server. That is why the `customerId` we gave to the `Identify()` method will only be assigned to events that are tracked after we received the Infinario server's response. Don't worry, all requests sent between calling the `Identify()` method and us receiving the Infinario server's confirmation are handled correctly.
 
-It is strongly recommended that you call the `identify()` method at most once and only on instances of the Infinario class that were constructed without a `customerId`. The `identify()` method cannot be used to change an existing player's `customerId`.
+It is strongly recommended that you call the `Identify()` method at most once and only on instances of the Infinario class that were constructed without a `customerId`. The `Identify()` method cannot be used to change an existing player's `customerId`.
 
 ##Updating player attributes
 
-In addition to tracking a player’s events we can store static information in the form of attributes for any given player. Call the `update()` method to set the current player's attributes:
+In addition to tracking a player’s events we can store static information in the form of attributes for any given player. Call the `Update()` method to set the current player's attributes:
 
 ```
-infinario.update("{ \"level\": 1, \"kills\": 9001 }");
+infinario.Update("{ \"level\": 1, \"kills\": 9001 }");
 ```
 
 The first argument are the player's new attributes which will be merged with any existing attributes. The attributes may contain anything, but must be a valid JSON string.
 
 ##Setting timestamps for tracked events
 
-By default, if no timestamp is specified the SDK uses the time when the `track()` method was called as the event's timestamp. You could however specify your own timestamp, the timestamp is a double value where the whole part is the number of seconds passed since 01-Jan-1970 (standard Unix Timestamp) and the decimal part specifies milliseconds.
+By default, if no timestamp is specified the SDK uses the time when the `Track()` method was called as the event's timestamp. You could however specify your own timestamp, the timestamp is a double value where the whole part is the number of seconds passed since 01-Jan-1970 (standard Unix Timestamp) and the decimal part specifies milliseconds.
 
 ```
-infinario.track("death", "{}", 1149573966.000); // Equal to 06-06-2006 06:06:06
+infinario.Track("death", "{}", 1149573966.000); // Equal to 06-06-2006 06:06:06
 ```
 
 ##Callbacks
@@ -108,7 +108,7 @@ A general note of caustion. When passing custom data to these functions or when 
 
 ###Response Callbacks
 
-Each of the methods that need to communicate with the Infinario server (`identify()`, `update()` and `track()`), has two optional parameters: a callback function pointer and a pointer to custom data that will be passed to the callback function when it is called. The callback function is called after a response is successfully received from the server or if an error occurs while processing the request.
+Each of the methods that need to communicate with the Infinario server (`Identify()`, `Update()` and `Track()`), has two optional parameters: a callback function pointer and a pointer to custom data that will be passed to the callback function when it is called. The callback function is called after a response is successfully received from the server or if an error occurs while processing the request.
 
 ```
 // This is the definition of a callback function.
@@ -138,11 +138,11 @@ void CallbackBar(const CIwHTTP &, const std::string &requestBody, const Infinari
 .
 
 // No custom data is sent to this callback.
-infinario.track("respawn", "{}", callbackFoo);
+infinario.Track("respawn", "{}", callbackFoo);
 
 // A string is sent to be available to the callback when the response arrives.
 std::string *stringData = new std::string("Hello there!");
-infinario.update("respawn", "{}", callbackBar, reinterpret_cast<void *>(data));
+infinario.Update("respawn", "{}", callbackBar, reinterpret_cast<void *>(data));
 ```
 
 You can see that within the `ResponseCallback` functions we are given 5 arguments:
@@ -155,7 +155,7 @@ You can see that within the `ResponseCallback` functions we are given 5 argument
    * `Infinario::ResponseStatus::RecieveBodyError` - the request was sent and a response was received, but an error occured when loading the received data.
    * `Infinario::ResponseStatus::KilledError` - the Infinario class instance was destroyed before the request can be finalized. In some cases the request could have already been sent to the Infinario server.
 * `responseBody` - the full HTTP response body received from the Infinario server. This can be used to check if the server correctly processed the sent request.
-* `userData` - a pointer to the custom data supplied to the method where response callback was assigned (in our case the method `update()`).
+* `userData` - a pointer to the custom data supplied to the method where response callback was assigned (in our case the method `Update()`).
 
 Warning, although it is safe to call any method of the Infinario class instance which called the current callback, it is not safe to delete this instance.
 
@@ -220,12 +220,12 @@ For the most accurate information (exact method prototypes and some helpful info
 You can run as many instances of the Infinario class as you wish, though for most cases one instance will be sufficient.
 
 In the current implementation the following methods of the infinario class are thread safe and thus can be called on an instance of the Infinario class that is shared by multiple threads:
-* Infinario::Track()
-* Infinario::Identify()
-* Infinario::Update()
-* Infinario::SetProxy()
-* Infinario::ClearProxy()
-* Infinario::SetEmptyRequestQueue()
-* Infinario::ClearEmptyRequestQueue()
+* `Infinario::Track()`
+* `Infinario::Identify()`
+* `Infinario::Update()`
+* `Infinario::SetProxy()`
+* `Infinario::ClearProxy()`
+* `Infinario::SetEmptyRequestQueue()`
+* `Infinario::ClearEmptyRequestQueue()`
 
 Tested on Marmalade v8.0.0.
